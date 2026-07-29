@@ -1,0 +1,177 @@
+---
+title: "How DBHub Adopts the New MCP Spec 2026-07-28"
+description: "A field report on upgrading DBHub to the MCP 2026-07-28 spec revision: the stateless core, cacheable tool lists, header-based routing — with before/after code for every change, plus what we evaluated and deliberately skipped."
+---
+
+The Model Context Protocol shipped its [2026-07-28 revision](https://blog.modelcontextprotocol.io/posts/2026-07-28/), and it is the biggest protocol change since MCP launched: the stateful `initialize` handshake is gone, requests are self-contained, and the whole protocol becomes request/response. DBHub adopted it the week it shipped — alongside the TypeScript SDK v2 release line that implements it.
+
+This post walks through every place we changed, with the actual before/after code, and — just as important — what we evaluated and deliberately did *not* build.
+
+The upgrade is live: 2026-07-28 clients get the new protocol on the same `/mcp` endpoint that keeps serving 2025-era clients unchanged.
+
+## 1. The stateless core: our workaround became the protocol
+
+DBHub's HTTP transport has always been stateless by deployment choice — no session affinity, safe behind a round-robin load balancer. But the 2025-era protocol assumed a session, so we had to fake it: construct a fresh transport *and* a fresh server instance for every single request, and disable session management by hand.
+
+**Before** (the workaround, verbatim from our source):
+
+```typescript
+app.post("/mcp", async (req, res) => {
+  try {
+    // In stateless mode, create a new instance of transport and server for each request
+    // to ensure complete isolation. A single instance would cause request ID collisions
+    // when multiple clients connect concurrently.
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined, // Disable session management for stateless mode
+      enableJsonResponse: true // Use JSON responses (SSE not supported in stateless mode)
+    });
+    const server = createServer();
+
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error("Error handling request:", error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+});
+```
+
+**After** (SDK v2's `createMcpHandler` — one factory, both protocol eras):
+
+```typescript
+const mcpHandler = createMcpHandler(createServer, { onerror: logMcpError("handler") });
+const mcpNodeHandler = toNodeHandler(mcpHandler, { onerror: logMcpError("adapter") });
+
+// express.json() has already consumed the request stream, so hand the
+// pre-parsed body to the adapter explicitly.
+app.all("/mcp", (req, res) => {
+  void mcpNodeHandler(req, res, req.body);
+});
+```
+
+On 2026-07-28, each request carries its protocol version, client identity, and capabilities in `_meta` — there is no `initialize` exchange and no `Mcp-Session-Id` header to route around. The per-request-instance model we hand-rolled is now the *native* serving model, and 2025-era clients are handled by the SDK's built-in stateless fallback: the exact idiom we used to maintain ourselves.
+
+stdio got the same treatment: `server.connect(new StdioServerTransport())` became `serveStdio(createServer)`, which pins a protocol era per connection.
+
+**The validated benefit:** ~25 lines of session-faking deleted, GET/DELETE handling included for free, and the stateless deployment story ("run N replicas behind any load balancer, no shared storage") is now spec-guaranteed instead of workaround-dependent.
+
+## 2. Cacheable `tools/list`: token efficiency, now protocol-level
+
+DBHub's pitch has always been *token efficient*. Our tool list is fixed per configuration — `execute_sql_{source}` and `search_objects_{source}` — yet every 2025-era client re-fetches it on every session, because the protocol had no way to say "this doesn't change."
+
+The 2026-07-28 revision adds required `ttlMs` / `cacheScope` fields on cacheable results. Our entire change:
+
+**Before:**
+
+```typescript
+const server = new McpServer({
+  name: SERVER_NAME,
+  version: SERVER_VERSION,
+});
+```
+
+**After:**
+
+```typescript
+const server = new McpServer(
+  { name: SERVER_NAME, version: SERVER_VERSION },
+  {
+    // `private` keeps caching client-side (no shared/proxy caches).
+    cacheHints: {
+      "tools/list": { ttlMs: TOOLS_LIST_CACHE_TTL_MS, cacheScope: "private" },
+    },
+  }
+);
+```
+
+And on the wire, a 2026-era `tools/list` response now carries:
+
+```json
+{
+  "result": {
+    "tools": [ { "name": "execute_sql", ... }, { "name": "search_objects", ... } ],
+    "ttlMs": 300000,
+    "cacheScope": "private"
+  }
+}
+```
+
+**The validated benefit:** conforming clients skip re-fetching the tool list entirely for five minutes at a time. We chose 5 minutes rather than "forever" for one reason: DBHub hot-reloads its TOML config, and the tool list can legitimately change at runtime — the TTL bounds how stale a cached list can be. That tradeoff is exactly what the field is for.
+
+## 3. Header-based routing: rate-limit `execute_sql` without parsing bodies
+
+2026-07-28 clients send standard headers — `Mcp-Method` and `Mcp-Name` — on every Streamable HTTP request. For a database tool, this matters more than it sounds: a gateway or WAF in front of DBHub can now tell a write-capable `execute_sql` call apart from a harmless `search_objects` call *without parsing JSON bodies*.
+
+Our change was one CORS line (the headers themselves come from the SDK):
+
+**Before:**
+
+```typescript
+res.header('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id');
+```
+
+**After:**
+
+```typescript
+res.header('Access-Control-Allow-Headers',
+  'Content-Type, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name');
+```
+
+**The validated benefit:** an nginx front can now do this, with no MCP awareness at all:
+
+```nginx
+# Throttle tool execution; leave schema exploration unthrottled
+map $http_mcp_name $mcp_write_limit {
+    "execute_sql"  $binary_remote_addr;
+    default        "";
+}
+limit_req_zone $mcp_write_limit zone=mcp_writes:10m rate=10r/m;
+```
+
+This pairs with DBHub's existing `--allowed-hosts` reverse-proxy support: the same deployment that fronted DBHub for TLS termination can now also meter it per-tool.
+
+## 4. What we evaluated and skipped: MRTR write confirmation
+
+The revision's multi-round-trip requests (MRTR) replace server-initiated elicitation: a tool can return `resultType: "input_required"`, and the client retries with answers — which finally works over stateless HTTP. For a database tool, the obvious application is a confirmation prompt before executing writes.
+
+We designed it, and then didn't ship it. Three reasons:
+
+1. **Confirmation is mostly the host's job.** DBHub already annotates write-capable tools with `destructiveHint: true`, and serious hosts (Claude Code, Claude Desktop) gate destructive tool calls behind their own approval UI. A server-side prompt would double-confirm.
+2. **The fallback is weak.** For clients that can't do elicitation, confirmation degrades to a `confirm: true` argument — which models learn to set preemptively. Security theater is worse than a documented boundary.
+3. **It demanded new config surface.** Every design required operators to express "writes need confirmation" in TOML. New knobs layered on the existing `readonly` boolean would create conflicting semantics — the thing we most wanted to avoid.
+
+Instead, the evaluation triggered a cleanup that needed *no* new config. DBHub's read-only enforcement used to re-interpret the `readonly` boolean in four disconnected places. It now flows through a single pipeline — every statement is classified (`read | dml | ddl | admin | unknown`, dialect-aware), and the config compiles into a class→verdict policy:
+
+**Before** (one of four scattered interpretations):
+
+```typescript
+const isReadonly = toolConfig?.readonly === true;
+if (isReadonly && !areAllStatementsReadOnly(sql, connector.id)) {
+  return createToolErrorResponse(errorMessage, "READONLY_VIOLATION");
+}
+```
+
+**After** (all four sites consume one policy):
+
+```typescript
+const policy = policyFromReadonly(toolConfig?.readonly);
+if (sqlVerdict(policy, sql, connector.id) === "deny") {
+  return createToolErrorResponse(errorMessage, "READONLY_VIOLATION");
+}
+```
+
+The verdict set is designed to grow a `confirm` member later — when 2026-era clients with elicitation support are the norm, MRTR-based write confirmation slots into the two gate sites without touching any config or call site. Until then, `readonly = true/false` remains the entire configuration vocabulary, and every existing `dbhub.toml` works unchanged.
+
+## 5. Compatibility notes
+
+- **2025-era clients are unaffected.** Same `/mcp` endpoint, same `initialize` handshake, served by the SDK's stateless fallback. stdio clients (Claude Desktop, Claude Code, Cursor) see no difference.
+- **One caveat for hand-rolled HTTP clients:** the legacy path now answers with spec-standard SSE framing (`event: message` / `data: {...}`) instead of the plain JSON bodies DBHub previously forced. Conforming MCP clients already accept both — the spec requires `Accept: application/json, text/event-stream` — but a raw `curl` script parsing the response as bare JSON needs to read the `data:` line.
+- **No config migration.** Nothing in this upgrade adds or changes a TOML key.
+
+## Takeaway
+
+The 2026-07-28 revision rewarded a particular kind of server: one that was already stateless, already token-conscious, and already deployed behind ordinary HTTP infrastructure. For DBHub, adoption was mostly *deletion* — the spec absorbed our workaround — plus two small opt-ins (cache hints, CORS headers) that turned deployment properties we already had into protocol guarantees. The features we skipped, we skipped deliberately, with the extension points left in place.
+
+DBHub is open source at [github.com/bytebase/dbhub](https://github.com/bytebase/dbhub). The entire adoption is a readable series of commits on `main` if you want to follow along for your own server.

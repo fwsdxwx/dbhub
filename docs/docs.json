@@ -42,6 +42,7 @@
       {
         "tab": "Blog",
         "pages": [
+          "blog/how-dbhub-adopts-mcp-spec-2026-07-28",
           "blog/state-of-postgres-mcp-servers-2025",
           "blog/postgres-mcp-server-review-dbhub",
           "blog/postgres-mcp-server-review-supabase-mcp",
