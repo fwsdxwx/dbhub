@@ -1,4 +1,5 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
+import { z } from "zod";
 import { createExecuteSqlToolHandler } from "./execute-sql.js";
 import { createSearchDatabaseObjectsToolHandler, searchDatabaseObjectsSchema } from "./search-objects.js";
 import { ConnectorManager } from "../connectors/manager.js";
@@ -53,7 +54,7 @@ function registerExecuteSqlTool(
     metadata.name,
     {
       description: metadata.description,
-      inputSchema: metadata.schema,
+      inputSchema: z.object(metadata.schema),
       annotations: metadata.annotations,
     },
     createExecuteSqlToolHandler(sourceId)
@@ -73,7 +74,7 @@ function registerSearchObjectsTool(
     metadata.name,
     {
       description: metadata.description,
-      inputSchema: searchDatabaseObjectsSchema,
+      inputSchema: z.object(searchDatabaseObjectsSchema),
       annotations: {
         title: metadata.title,
         readOnlyHint: true,
@@ -104,7 +105,7 @@ function registerCustomTool(
     toolConfig.name,
     {
       description: toolConfig.description,
-      inputSchema: zodSchema,
+      inputSchema: z.object(zodSchema),
       annotations: {
         title: `${toolConfig.name} (${dbType})`,
         readOnlyHint: isReadOnly,

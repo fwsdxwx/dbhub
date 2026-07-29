@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import { ToolAnnotations } from "@modelcontextprotocol/server";
 import { ConnectorManager } from "../connectors/manager.js";
 import { normalizeSourceId } from "./normalize-id.js";
 import { executeSqlSchema } from "../tools/execute-sql.js";

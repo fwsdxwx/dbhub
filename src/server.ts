@@ -1,6 +1,6 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { McpServer } from "@modelcontextprotocol/server";
+import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import express from "express";
 import http from "http";
 import path from "path";
@@ -238,7 +238,7 @@ See documentation for more details on configuring database connections.
           // In stateless mode, create a new instance of transport and server for each request
           // to ensure complete isolation. A single instance would cause request ID collisions
           // when multiple clients connect concurrently.
-          const transport = new StreamableHTTPServerTransport({
+          const transport = new NodeStreamableHTTPServerTransport({
             sessionIdGenerator: undefined, // Disable session management for stateless mode
             enableJsonResponse: true // Use JSON responses (SSE not supported in stateless mode)
           });
