@@ -3,7 +3,7 @@ import { createExecuteSqlToolHandler, executeSqlInputSchema } from "./execute-sq
 import { createSearchDatabaseObjectsToolHandler, searchDatabaseObjectsInputSchema } from "./search-objects.js";
 import { ConnectorManager } from "../connectors/manager.js";
 import { getExecuteSqlMetadata, getSearchObjectsMetadata } from "../utils/tool-metadata.js";
-import { isReadOnlySQL } from "../utils/allowed-keywords.js";
+import { classifySQL } from "../utils/sql-access-policy.js";
 import { createCustomToolHandler, getCustomToolInputSchema } from "./custom-tool-handler.js";
 import type { ToolConfig } from "../types/config.js";
 import { getToolRegistry } from "./registry.js";
@@ -97,7 +97,9 @@ function registerCustomTool(
   const sourceConfig = ConnectorManager.getSourceConfig(sourceId)!;
   const dbType = sourceConfig.type;
 
-  const isReadOnly = isReadOnlySQL(toolConfig.statement!, dbType);
+  // Annotations reflect what the statement actually does, not the tool's
+  // readonly config: a SELECT-backed custom tool is read-only regardless.
+  const isReadOnly = classifySQL(toolConfig.statement!, dbType) === "read";
 
   server.registerTool(
     toolConfig.name,

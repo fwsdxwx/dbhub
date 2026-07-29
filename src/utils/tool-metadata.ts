@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ToolAnnotations } from "@modelcontextprotocol/server";
+import { policyFromReadonly, isReadOnlyPolicy } from "./sql-access-policy.js";
 import { ConnectorManager } from "../connectors/manager.js";
 import { normalizeSourceId } from "./normalize-id.js";
 import { executeSqlSchema } from "../tools/execute-sql.js";
@@ -143,8 +144,9 @@ export function getExecuteSqlMetadata(sourceId: string): ToolMetadata {
     ? `${userDescPrefix}Execute SQL queries on the ${dbType} database${readonlyNote}${maxRowsNote}`
     : `${userDescPrefix}Execute SQL queries on the '${sourceId}' ${dbType} database${readonlyNote}${maxRowsNote}`;
 
-  // Build annotations object with all standard MCP hints
-  const isReadonly = executeOptions.readonly === true;
+  // Build annotations object with all standard MCP hints, derived from the
+  // same access policy that gates execution (see sql-access-policy.ts)
+  const isReadonly = isReadOnlyPolicy(policyFromReadonly(executeOptions.readonly));
   const annotations = {
     title,
     readOnlyHint: isReadonly,

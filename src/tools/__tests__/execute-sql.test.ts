@@ -63,7 +63,7 @@ describe('execute-sql tool', () => {
       expect(parsedResult.success).toBe(true);
       expect(parsedResult.data.rows).toEqual([{ id: 1, name: 'test' }]);
       expect(parsedResult.data.count).toBe(1);
-      expect(mockConnector.executeSQL).toHaveBeenCalledWith('SELECT * FROM users', { readonly: undefined, maxRows: undefined });
+      expect(mockConnector.executeSQL).toHaveBeenCalledWith('SELECT * FROM users', { readonly: false, maxRows: undefined });
     });
 
     it('should pass multi-statement SQL directly to connector', async () => {
@@ -76,7 +76,7 @@ describe('execute-sql tool', () => {
       const parsedResult = parseToolResponse(result);
 
       expect(parsedResult.success).toBe(true);
-      expect(mockConnector.executeSQL).toHaveBeenCalledWith(sql, { readonly: undefined, maxRows: undefined });
+      expect(mockConnector.executeSQL).toHaveBeenCalledWith(sql, { readonly: false, maxRows: undefined });
     });
 
     it('should handle execution errors', async () => {

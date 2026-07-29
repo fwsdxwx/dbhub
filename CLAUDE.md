@@ -35,7 +35,8 @@ src/
 ├── utils/               # Shared utilities
 │   ├── dsn-obfuscator.ts# DSN security
 │   ├── response-formatter.ts # Output formatting
-│   └── allowed-keywords.ts  # Read-only SQL validation
+│   ├── allowed-keywords.ts  # Read-only SQL classification primitives
+│   └── sql-access-policy.ts # Statement class → verdict pipeline (single source of readonly semantics)
 └── index.ts             # Entry point with transport handling
 ```
 

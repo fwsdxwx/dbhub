@@ -5,7 +5,7 @@
 
 import { ConnectorType } from "../connectors/interface.js";
 import { ConnectorManager } from "../connectors/manager.js";
-import { isReadOnlySQL, allowedKeywords } from "./allowed-keywords.js";
+import { allowedKeywords } from "./allowed-keywords.js";
 import { requestStore } from "../requests/index.js";
 import { getClientIdentifier } from "./client-identifier.js";
 import { classifyConnectionError } from "./error-classifier.js";
@@ -28,12 +28,6 @@ export interface RequestMetadata {
 export function getEffectiveSourceId(sourceId?: string): string {
   return sourceId || "default";
 }
-
-/**
- * Re-export isReadOnlySQL for readonly mode validation
- * Checks if SQL statement is read-only (SELECT, WITH, etc.)
- */
-export { isReadOnlySQL as isAllowedInReadonlyMode };
 
 /**
  * Create a readonly violation error message

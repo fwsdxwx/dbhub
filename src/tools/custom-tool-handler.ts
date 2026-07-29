@@ -12,11 +12,11 @@ import {
 } from "../utils/response-formatter.js";
 import { mapArgumentsToArray } from "../utils/parameter-mapper.js";
 import {
-  isAllowedInReadonlyMode,
   createReadonlyViolationMessage,
   trackToolRequest,
   tryClassifyConnectionError,
 } from "../utils/tool-handler-helpers.js";
+import { policyFromReadonly, isReadOnlyPolicy, sqlVerdict } from "../utils/sql-access-policy.js";
 
 /**
  * Build a Zod schema from parameter definitions
@@ -191,15 +191,17 @@ export function createCustomToolHandler(toolConfig: ToolConfig) {
       // 3. Get connector for the specified source
       const connector = ConnectorManager.getCurrentConnector(toolConfig.source);
 
-      // 4. Build execute options from tool configuration
+      // 4. Build execute options from the tool's access policy (compiled
+      // from the per-tool readonly config); the engine-level read-only
+      // backstop derives from the same policy as the gate below.
+      const policy = policyFromReadonly(toolConfig.readonly);
       const executeOptions = {
-        readonly: toolConfig.readonly,
+        readonly: isReadOnlyPolicy(policy),
         maxRows: toolConfig.max_rows,
       };
 
-      // 5. Check if SQL is allowed based on readonly mode
-      const isReadonly = executeOptions.readonly === true;
-      if (isReadonly && !isAllowedInReadonlyMode(toolConfig.statement, connector.id)) {
+      // 5. Gate the statement through the policy
+      if (sqlVerdict(policy, toolConfig.statement, connector.id) === "deny") {
         errorMessage = createReadonlyViolationMessage(toolConfig.name, toolConfig.source, connector.id);
         success = false;
         return createToolErrorResponse(errorMessage, "READONLY_VIOLATION");
