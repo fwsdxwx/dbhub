@@ -180,6 +180,7 @@ describe('SQL Server Connector Integration Tests', () => {
   if (sqlServerTest.config.supportsStoredProcedures) {
     sqlServerTest.createStoredProcedureTests();
   }
+  sqlServerTest.createCommentTests();
   sqlServerTest.createErrorHandlingTests();
 
   describe('SQL Server SSL/TLS Configuration', () => {

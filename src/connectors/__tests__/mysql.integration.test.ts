@@ -172,6 +172,7 @@ describe('MySQL Connector Integration Tests', () => {
   if (mysqlTest.config.supportsStoredProcedures) {
     mysqlTest.createStoredProcedureTests();
   }
+  mysqlTest.createCommentTests();
   mysqlTest.createErrorHandlingTests();
   mysqlTest.createSSLTests();
 

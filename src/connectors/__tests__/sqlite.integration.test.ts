@@ -105,6 +105,7 @@ describe('SQLite Connector Integration Tests', () => {
   sqliteTest.createSchemaTests();
   sqliteTest.createTableTests();
   sqliteTest.createSQLExecutionTests();
+  sqliteTest.createCommentTests();
   sqliteTest.createErrorHandlingTests();
 
   describe('SQLite-specific Features', () => {

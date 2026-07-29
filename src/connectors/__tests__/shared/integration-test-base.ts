@@ -68,34 +68,6 @@ export abstract class IntegrationTestBase<TContainer extends TestContainer> {
     }
   }
 
-  /**
-   * Common test suite that can be reused across different database types
-   */
-  createTestSuite(suiteName: string): void {
-    describe(suiteName, () => {
-      beforeAll(async () => {
-        await this.setup();
-      }, 120000);
-
-      afterAll(async () => {
-        await this.cleanup();
-      });
-
-      this.createConnectionTests();
-      this.createSchemaTests();
-      this.createTableTests();
-      this.createSQLExecutionTests();
-
-      if (this.config.supportsStoredProcedures) {
-        this.createStoredProcedureTests();
-      }
-
-      this.createCommentTests();
-
-      this.createErrorHandlingTests();
-    });
-  }
-
   createConnectionTests(): void {
     describe('Connection', () => {
       it('should validate DSN format', () => {

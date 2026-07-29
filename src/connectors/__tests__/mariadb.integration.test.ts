@@ -178,6 +178,7 @@ describe('MariaDB Connector Integration Tests', () => {
   if (mariadbTest.config.supportsStoredProcedures) {
     mariadbTest.createStoredProcedureTests();
   }
+  mariadbTest.createCommentTests();
   mariadbTest.createErrorHandlingTests();
   mariadbTest.createSSLTests();
 

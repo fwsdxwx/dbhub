@@ -210,6 +210,7 @@ describe('PostgreSQL Connector Integration Tests', () => {
   if (postgresTest.config.supportsStoredProcedures) {
     postgresTest.createStoredProcedureTests();
   }
+  postgresTest.createCommentTests();
   postgresTest.createErrorHandlingTests();
   postgresTest.createSSLTests();
   describe('PostgreSQL-specific Features', () => {
