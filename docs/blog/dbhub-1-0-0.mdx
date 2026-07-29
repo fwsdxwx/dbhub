@@ -1,0 +1,48 @@
+---
+title: "DBHub 1.0.0"
+description: "DBHub reaches 1.0.0: native support for the new MCP 2026-07-28 spec, 17 months of iteration in numbers, and the MCP server the official Claude Code docs use to connect PostgreSQL."
+---
+
+Today we're releasing **DBHub 1.0.0** — the first major version of our zero-dependency, token-efficient database MCP server for PostgreSQL, MySQL, MariaDB, SQL Server, and SQLite.
+
+## Why now
+
+The Model Context Protocol shipped its [2026-07-28 spec revision](https://blog.modelcontextprotocol.io/posts/2026-07-28/) this week — the largest protocol change since MCP launched, making the protocol stateless at its core. DBHub adopted it the same week: the stateless serving model, cacheable tool lists, and header-based routing are all live in 1.0.0, while 2025-era clients keep working unchanged on the same endpoints. We wrote up the adoption item by item, with before/after code, in [How DBHub Adopts the New MCP Spec 2026-07-28](/blog/how-dbhub-adopts-mcp-spec-2026-07-28).
+
+A protocol milestone deserved a version milestone. DBHub has been stateless by design since its first release; with the spec now guaranteeing that model, the architecture we bet on is standard — and that's what a 1.0 should mean.
+
+## 17 months in numbers
+
+Since the first commit in March 2025:
+
+- **573 commits** and **73 npm releases** — a release roughly every week
+- **164 pull requests** merged from **34 contributors**
+- **158 issues** closed, with only **3 open** at the time of writing
+- **3,200+ GitHub stars** and **270+ forks**
+
+Along the way DBHub grew from a single-database bridge into what ships in 1.0.0: multi-database TOML configuration with hot reload, custom parameterized tools, SSH tunnels with multi-hop ProxyJump, read-only enforcement backed by engine-level guards, a built-in web workbench, an MCP Bundle for one-click Claude Desktop install, and a Claude Code plugin.
+
+## The official way to connect Claude Code to Postgres
+
+DBHub is the MCP server the [official Claude Code documentation](https://code.claude.com/docs/en/mcp#example-query-your-postgresql-database) uses in its "Query your PostgreSQL database" example:
+
+![Claude Code docs referencing DBHub for PostgreSQL](https://raw.githubusercontent.com/bytebase/dbhub/main/docs/images/blog/dbhub-1-0-0/claude-code-docs-dbhub.webp)
+
+```bash
+claude mcp add --transport stdio db -- npx -y @bytebase/dbhub \
+  --dsn "postgresql://readonly:pass@prod.db.com:5432/analytics"
+```
+
+Then just ask: *"What's our total revenue this month?"*
+
+## Compatibility
+
+1.0.0 is a protocol upgrade, not a breaking release: every existing `dbhub.toml`, DSN, and command-line flag works unchanged, and 2025-era MCP clients are served transparently alongside 2026-07-28 clients. The one caveat for hand-rolled HTTP scripts is documented in the [adoption post](/blog/how-dbhub-adopts-mcp-spec-2026-07-28#5-compatibility-notes).
+
+Get started in one line:
+
+```bash
+npx @bytebase/dbhub --demo
+```
+
+DBHub is open source under the MIT license at [github.com/bytebase/dbhub](https://github.com/bytebase/dbhub) — thanks to everyone who filed the 158 issues and sent the 164 pull requests that got it here.
