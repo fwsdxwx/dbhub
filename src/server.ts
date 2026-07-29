@@ -1,6 +1,6 @@
-import { McpServer } from "@modelcontextprotocol/server";
-import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
-import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import { toNodeHandler } from "@modelcontextprotocol/node";
 import express from "express";
 import http from "http";
 import path from "path";
@@ -113,7 +113,7 @@ See documentation for more details on configuring database connections.
       initialTools: sourceConfigsData.tools,
     });
 
-    // Create MCP server factory function for HTTP transport
+    // Create MCP server factory function (used per HTTP request and per stdio connection)
     // Note: This must be created AFTER ConnectorManager is initialized
     const createServer = () => {
       const server = new McpServer({
@@ -223,35 +223,24 @@ See documentation for more details on configuring database connections.
       app.get("/api/sources/:sourceId", getSource);
       app.get("/api/requests", listRequests);
 
-      // Main endpoint for streamable HTTP transport
-      // SSE streaming (GET requests) is not supported in stateless mode
-      // Return 405 Method Not Allowed for GET requests to indicate this
-      app.get("/mcp", (req, res) => {
-        res.status(405).json({
-          error: 'Method Not Allowed',
-          message: 'SSE streaming is not supported in stateless mode. Use POST requests with JSON responses.'
-        });
+      // Main MCP endpoint. createMcpHandler serves both protocol eras from
+      // the same factory: 2026-07-28 requests natively (stateless by design —
+      // a fresh server instance per request, no Mcp-Session-Id), and 2025-era
+      // clients through the default `legacy: 'stateless'` fallback, which is
+      // the same per-request idiom DBHub hand-wired before. It also validates
+      // the 2026-07-28 standard headers (Mcp-Method / Mcp-Name) against the
+      // body on the modern path.
+      const mcpHandler = createMcpHandler(createServer, {
+        onerror: (error) => console.error("MCP handler error:", error),
+      });
+      const mcpNodeHandler = toNodeHandler(mcpHandler, {
+        onerror: (error) => console.error("MCP handler error:", error),
       });
 
-      app.post("/mcp", async (req, res) => {
-        try {
-          // In stateless mode, create a new instance of transport and server for each request
-          // to ensure complete isolation. A single instance would cause request ID collisions
-          // when multiple clients connect concurrently.
-          const transport = new NodeStreamableHTTPServerTransport({
-            sessionIdGenerator: undefined, // Disable session management for stateless mode
-            enableJsonResponse: true // Use JSON responses (SSE not supported in stateless mode)
-          });
-          const server = createServer();
-
-          await server.connect(transport);
-          await transport.handleRequest(req, res, req.body);
-        } catch (error) {
-          console.error("Error handling request:", error);
-          if (!res.headersSent) {
-            res.status(500).json({ error: 'Internal server error' });
-          }
-        }
+      // express.json() has already consumed the request stream, so hand the
+      // pre-parsed body to the adapter explicitly.
+      app.all("/mcp", (req, res) => {
+        void mcpNodeHandler(req, res, req.body);
       });
 
       // SPA fallback - serve index.html for all non-API routes (production only)
@@ -306,10 +295,13 @@ See documentation for more details on configuring database connections.
         console.error(`MCP server endpoint at http://${userHost}:${boundPort}/mcp`);
       });
     } else {
-      // STDIO transport: Pure MCP-over-stdio, no HTTP server
-      const server = createServer();
-      const transport = new StdioServerTransport();
-      await server.connect(transport);
+      // STDIO transport: Pure MCP-over-stdio, no HTTP server. serveStdio owns
+      // the era decision per connection: a 2026-07-28 opening is served
+      // natively, a 2025-era `initialize` pins a legacy-era instance from the
+      // same factory — same behavior as the previous hand-wired transport.
+      const stdioHandle = serveStdio(createServer, {
+        onerror: (error) => console.error("MCP stdio error:", error),
+      });
       console.error("MCP server running on stdio");
 
       let isShuttingDown = false;
@@ -317,7 +309,7 @@ See documentation for more details on configuring database connections.
         if (isShuttingDown) return;
         isShuttingDown = true;
         console.error("Shutting down...");
-        await transport.close();
+        await stdioHandle.close();
         await connectorManager.disconnect();
         process.exit(0);
       };

@@ -175,8 +175,17 @@ describe('JSON RPC Integration Tests', () => {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    // Server uses JSON responses in stateless mode (no SSE)
-    return await response.json();
+    // The stateless legacy path answers spec-standard SSE framing (a single
+    // result event per exchange); modern-era responses are plain JSON.
+    const text = await response.text();
+    if (response.headers.get('content-type')?.includes('text/event-stream')) {
+      const dataLine = text.split('\n').find((line) => line.startsWith('data: '));
+      if (!dataLine) {
+        throw new Error(`No data event in SSE response: ${text}`);
+      }
+      return JSON.parse(dataLine.slice('data: '.length));
+    }
+    return JSON.parse(text);
   }
 
   it('uses the DSN env var, not an ambient dbhub.toml', () => {
