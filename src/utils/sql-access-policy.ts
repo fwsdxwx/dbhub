@@ -18,8 +18,8 @@
 import { ConnectorType } from "../connectors/interface.js";
 import {
   isReadOnlySQL,
+  hasEscapeHatchFunction,
   sqlServerDynamicSqlPattern,
-  sqlServerPassThroughPattern,
 } from "./allowed-keywords.js";
 import { splitSQLStatements, stripCommentsAndStrings } from "./sql-parser.js";
 
@@ -28,8 +28,10 @@ import { splitSQLStatements, stripCommentsAndStrings } from "./sql-parser.js";
  * - read: allowed by the read-only classifier (select/with/explain/show/...)
  * - dml: data modification (insert/update/delete/merge, REPLACE INTO)
  * - ddl: schema modification (create/alter/drop/truncate/rename)
- * - admin: privilege changes and dynamic-SQL escape hatches
- *   (grant/revoke, T-SQL EXEC/sp_executesql/xp_cmdshell, OPENQUERY & co.)
+ * - admin: privilege changes plus privilege-gated and server-side-effect
+ *   escape hatches (grant/revoke; T-SQL EXEC/sp_executesql/xp_cmdshell and
+ *   OPENQUERY & co.; MySQL/MariaDB LOAD_FILE and the GET_LOCK family;
+ *   PostgreSQL pg_read_file & co.)
  * - unknown: not classifiable (vacuum, set, call, ...) — ranked above the
  *   named classes because an unclassifiable statement must be treated at
  *   least as cautiously as any known one
@@ -53,13 +55,14 @@ const ddlPattern = /\b(?:create|alter|drop|truncate|rename)\b/i;
 const dmlPattern = /\b(?:insert|update|delete|merge|replace\s+(?:(?:low_priority|delayed)\s+)?into)\b/i;
 const grantRevokePattern = /\b(?:grant|revoke)\b/i;
 
-/** The dynamic-SQL / pass-through escape hatches are T-SQL-only. */
 function isAdminStatement(stripped: string, connectorType: ConnectorType): boolean {
   if (grantRevokePattern.test(stripped)) return true;
-  return (
-    connectorType === "sqlserver" &&
-    (sqlServerDynamicSqlPattern.test(stripped) || sqlServerPassThroughPattern.test(stripped))
-  );
+  // Call-position escape-hatch functions (SQL Server OPENQUERY & co., the
+  // MySQL/MariaDB file/lock functions, PostgreSQL filesystem reads).
+  if (hasEscapeHatchFunction(stripped, connectorType)) return true;
+  // SQL Server dynamic-SQL primitives are statement-leading forms (not
+  // call-position), so they need their own whole-word pattern.
+  return connectorType === "sqlserver" && sqlServerDynamicSqlPattern.test(stripped);
 }
 
 /**

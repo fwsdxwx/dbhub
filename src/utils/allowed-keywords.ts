@@ -110,6 +110,57 @@ export const sqlServerPassThroughPattern = new RegExp(
 );
 
 /**
+ * Functions callable from a plain SELECT that reach beyond ordinary data
+ * access and are NOT contained by a read-only transaction, because they are
+ * gated by privilege rather than transaction mode. Matched in call position
+ * (trailing `(`) on the comment/string-stripped SQL, so a column or table
+ * named `load_file` still classifies as read-only. Per dialect:
+ * - MySQL/MariaDB: LOAD_FILE reads server-side files (FILE privilege);
+ *   GET_LOCK / RELEASE_LOCK / RELEASE_ALL_LOCKS take or release server-wide
+ *   advisory locks (a session side effect).
+ * - PostgreSQL: pg_read_file / pg_read_binary_file / pg_ls_dir read the
+ *   server filesystem (pg_read_server_files role; default_transaction_read_only
+ *   does not apply).
+ * - SQL Server: OPENQUERY / OPENROWSET / OPENDATASOURCE run on a
+ *   remote/ad-hoc source outside the local read-only transaction
+ *   (sqlServerPassThroughKeywords, reused here as the single source of truth).
+ *
+ * This is a best-effort guardrail: name matching is bypassable (quoted
+ * identifiers, executable version comments), so least-privilege database
+ * accounts remain the security boundary. See issue #377.
+ *
+ * NOTE: SQL Server's dynamic-SQL primitives (EXEC / sp_executesql /
+ * xp_cmdshell) are NOT here — they are statement-leading forms, not
+ * call-position functions, and already fail the first-keyword allow-list in
+ * isReadOnlySQL. They classify as admin via sqlServerDynamicSqlPattern.
+ */
+export const escapeHatchFunctionKeywords: Partial<Record<ConnectorType, readonly string[]>> = {
+  mysql: ["load_file", "get_lock", "release_lock", "release_all_locks"],
+  mariadb: ["load_file", "get_lock", "release_lock", "release_all_locks"],
+  postgres: ["pg_read_file", "pg_read_binary_file", "pg_ls_dir"],
+  sqlserver: sqlServerPassThroughKeywords,
+};
+
+const escapeHatchFunctionPatterns: Partial<Record<ConnectorType, RegExp>> = Object.fromEntries(
+  Object.entries(escapeHatchFunctionKeywords).map(([type, keywords]) => [
+    type,
+    new RegExp(`\\b(?:${keywords.join("|")})\\s*\\(`, "i"),
+  ])
+);
+
+/**
+ * Whether (comment/string-stripped) SQL invokes one of the dialect's
+ * escape-hatch functions in call position.
+ */
+export function hasEscapeHatchFunction(
+  strippedSQL: string,
+  connectorType: ConnectorType | string
+): boolean {
+  const pattern = escapeHatchFunctionPatterns[connectorType as ConnectorType];
+  return pattern !== undefined && pattern.test(strippedSQL);
+}
+
+/**
  * Extended pattern for SQL Server: base mutating keywords plus the dynamic SQL
  * primitives above.
  */
@@ -179,10 +230,12 @@ function checkReadOnly(cleanedSQL: string, connectorType: ConnectorType | string
     return false;
   }
 
-  // SQL Server pass-through data sources escape both read-only layers, so they
-  // are rejected wherever they appear — not just under WITH, since the common
-  // form is a plain `SELECT ... FROM OPENQUERY(...)`.
-  if (connectorType === "sqlserver" && sqlServerPassThroughPattern.test(cleanedSQL)) {
+  // Escape-hatch functions callable from a plain SELECT that a read-only
+  // transaction does not contain — SQL Server pass-through sources
+  // (OPENQUERY & co.), MySQL/MariaDB file/lock functions, PostgreSQL
+  // filesystem reads. Rejected wherever they appear, since the common form is
+  // e.g. `SELECT ... FROM OPENQUERY(...)`. See escapeHatchFunctionKeywords.
+  if (hasEscapeHatchFunction(cleanedSQL, connectorType)) {
     return false;
   }
 
