@@ -50,8 +50,9 @@ Key architectural patterns:
   - Location: `src/connectors/manager.ts`
 - **Transport Abstraction**: Support for both stdio (desktop tools) and HTTP (network clients)
   - HTTP transport endpoint: `/mcp` (aligns with official MCP SDK standard)
-  - Implemented in `src/server.ts` using `StreamableHTTPServerTransport` with JSON responses
-  - Runs in stateless mode (no SSE support) - GET requests to `/mcp` return 405 Method Not Allowed
+  - Implemented in `src/server.ts` using `createMcpHandler` (MCP SDK v2), which serves both protocol eras from one factory: the stateless 2026-07-28 revision natively, and 2025-era clients via the default `legacy: 'stateless'` fallback (fresh server per request, spec-standard SSE-framed responses; GET/DELETE on the legacy path return 405)
+  - stdio uses `serveStdio` from `@modelcontextprotocol/server/stdio` (era pinned per connection)
+  - 2026-07-28 clients get cache hints on `tools/list` (`cacheHints` in `ServerOptions`: 5-minute TTL, `private` scope) and send `Mcp-Method`/`Mcp-Name` headers usable for gateway routing/rate-limiting
   - Tests in `src/__tests__/json-rpc-integration.test.ts`
 - **Tool Handlers**: Clean separation of MCP protocol concerns
   - Multi-database routing is by tool name, not by parameter: one tool instance is registered per source, named `execute_sql_{source_id}` / `search_objects_{source_id}` (single-source configs keep the bare `execute_sql` / `search_objects` names). See `src/tools/index.ts` and `src/utils/tool-metadata.ts`. `source_id` appears in tool *output* metadata only.

@@ -208,10 +208,15 @@ See documentation for more details on configuring database connections.
           });
         }
 
-        // CORS headers — only reflect validated origins
+        // CORS headers — only reflect validated origins. Beyond the legacy
+        // Mcp-Session-Id, allow the 2026-07-28 standard headers (SEP-2243)
+        // that clients send for header-based routing: MCP-Protocol-Version,
+        // Mcp-Method, and Mcp-Name. (Mcp-Param-* headers are dynamically
+        // named and cannot be statically allow-listed — browser clients skip
+        // mirroring them for exactly this reason.)
         res.header('Access-Control-Allow-Origin', origin || 'http://localhost');
         res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name');
         res.header('Access-Control-Allow-Credentials', 'true');
 
         if (req.method === 'OPTIONS') {
