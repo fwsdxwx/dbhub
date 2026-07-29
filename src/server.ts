@@ -116,10 +116,21 @@ See documentation for more details on configuring database connections.
     // Create MCP server factory function (used per HTTP request and per stdio connection)
     // Note: This must be created AFTER ConnectorManager is initialized
     const createServer = () => {
-      const server = new McpServer({
-        name: SERVER_NAME,
-        version: SERVER_VERSION,
-      });
+      const server = new McpServer(
+        {
+          name: SERVER_NAME,
+          version: SERVER_VERSION,
+        },
+        {
+          // Cache hints for 2026-07-28 clients (2025-era responses never carry
+          // them). The tool list only changes on a TOML config hot reload, so
+          // let clients skip refetching tools/list for a while. `private`
+          // keeps caching client-side (no shared/proxy caches).
+          cacheHints: {
+            "tools/list": { ttlMs: 300_000, cacheScope: "private" },
+          },
+        }
+      );
 
       // Register tools (both built-in and custom)
       // All tools are validated and managed by the ToolRegistry
