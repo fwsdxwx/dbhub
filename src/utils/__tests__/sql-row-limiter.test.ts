@@ -82,7 +82,7 @@ describe("SQLRowLimiter", () => {
     it("should add LIMIT when none exists", () => {
       const sql = "SELECT * FROM users";
       const result = SQLRowLimiter.applyMaxRows(sql, 100);
-      expect(result).toBe("SELECT * FROM users LIMIT 100");
+      expect(result).toBe("SELECT * FROM users\nLIMIT 100");
     });
 
     // Note: @p style parameters with LIMIT is not valid SQL Server syntax
@@ -99,7 +99,7 @@ describe("SQLRowLimiter", () => {
       const result = SQLRowLimiter.applyMaxRows(sql, 1000);
       // Should wrap in subquery to enforce max_rows as hard cap
       expect(result).toBe(
-        `SELECT * FROM (SELECT * FROM users WHERE name = ${p1} LIMIT ${p2}) AS subq LIMIT 1000${semi}`
+        `SELECT * FROM (SELECT * FROM users WHERE name = ${p1} LIMIT ${p2}\n) AS subq LIMIT 1000${semi}`
       );
     });
 
@@ -119,34 +119,39 @@ describe("SQLRowLimiter", () => {
       const sql = "SELECT emp_no, first_name, last_name, hire_date FROM employee WHERE first_name ILIKE '%' || $1 || '%' OR last_name ILIKE '%' || $1 || '%' LIMIT $2";
       const result = SQLRowLimiter.applyMaxRows(sql, 1000);
       // Should wrap in subquery to enforce max_rows
-      expect(result).toBe("SELECT * FROM (SELECT emp_no, first_name, last_name, hire_date FROM employee WHERE first_name ILIKE '%' || $1 || '%' OR last_name ILIKE '%' || $1 || '%' LIMIT $2) AS subq LIMIT 1000");
+      expect(result).toBe("SELECT * FROM (SELECT emp_no, first_name, last_name, hire_date FROM employee WHERE first_name ILIKE '%' || $1 || '%' OR last_name ILIKE '%' || $1 || '%' LIMIT $2\n) AS subq LIMIT 1000");
     });
 
     it("should preserve semicolon at end when adding LIMIT", () => {
       const sql = "SELECT * FROM users;";
       const result = SQLRowLimiter.applyMaxRows(sql, 100);
-      expect(result).toBe("SELECT * FROM users LIMIT 100;");
+      expect(result).toBe("SELECT * FROM users\nLIMIT 100;");
     });
 
     it("should add LIMIT when 'limit' only appears in string literal", () => {
       const sql = "SELECT 'show limit 10 records' AS msg FROM users";
       const result = SQLRowLimiter.applyMaxRows(sql, 100);
-      expect(result).toBe("SELECT 'show limit 10 records' AS msg FROM users LIMIT 100");
+      expect(result).toBe("SELECT 'show limit 10 records' AS msg FROM users\nLIMIT 100");
     });
 
     it("should add LIMIT when 'limit' only appears in comment", () => {
       const sql = "SELECT * FROM users /* limit 10 */";
       const result = SQLRowLimiter.applyMaxRows(sql, 100);
-      expect(result).toBe("SELECT * FROM users /* limit 10 */ LIMIT 100");
+      expect(result).toBe("SELECT * FROM users /* limit 10 */\nLIMIT 100");
     });
 
-    it("appends LIMIT after a trailing line comment, leaving it inside the comment (known limitation — cap is textually present but inert)", () => {
-      // Known limitation: the LIMIT is appended to the end of the statement, which
-      // here lands inside the trailing `--` comment, so the engine ignores it and
-      // no row cap is actually enforced for this shape of query.
+    it("adds an effective LIMIT even when the query ends in a -- line comment", () => {
+      // The LIMIT is appended on a new line so a trailing `--` comment cannot
+      // swallow it (a same-line append would leave the cap inert).
       const sql = "SELECT * FROM users -- limit 10";
       const result = SQLRowLimiter.applyMaxRows(sql, 100);
-      expect(result).toBe("SELECT * FROM users -- limit 10 LIMIT 100");
+      expect(result).toBe("SELECT * FROM users -- limit 10\nLIMIT 100");
+    });
+
+    it("keeps the subquery wrap syntactically valid when the inner query ends in a -- line comment", () => {
+      const sql = "SELECT * FROM users LIMIT ? -- cap";
+      const result = SQLRowLimiter.applyMaxRows(sql, 100);
+      expect(result).toBe("SELECT * FROM (SELECT * FROM users LIMIT ? -- cap\n) AS subq LIMIT 100");
     });
   });
 });

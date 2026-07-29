@@ -81,8 +81,10 @@ export class SQLRowLimiter {
       const trimmed = sql.trim();
       const hasSemicolon = trimmed.endsWith(';');
       const sqlWithoutSemicolon = hasSemicolon ? trimmed.slice(0, -1) : trimmed;
-      
-      return `${sqlWithoutSemicolon} LIMIT ${maxRows}${hasSemicolon ? ';' : ''}`;
+
+      // Append on a new line: if the query ends in a `--` line comment, a
+      // same-line LIMIT would land inside the comment and be inert.
+      return `${sqlWithoutSemicolon}\nLIMIT ${maxRows}${hasSemicolon ? ';' : ''}`;
     }
   }
 
@@ -136,7 +138,10 @@ export class SQLRowLimiter {
       const trimmed = sql.trim();
       const hasSemicolon = trimmed.endsWith(';');
       const sqlWithoutSemicolon = hasSemicolon ? trimmed.slice(0, -1) : trimmed;
-      return `SELECT * FROM (${sqlWithoutSemicolon}) AS subq LIMIT ${maxRows}${hasSemicolon ? ';' : ''}`;
+      // Close the subquery on a new line: if the inner query ends in a `--`
+      // line comment, a same-line `)` would be swallowed by the comment and
+      // the wrapped statement would be syntactically broken.
+      return `SELECT * FROM (${sqlWithoutSemicolon}\n) AS subq LIMIT ${maxRows}${hasSemicolon ? ';' : ''}`;
     }
 
     // For literal LIMIT values, apply the minimum logic
