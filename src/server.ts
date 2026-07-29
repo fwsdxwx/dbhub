@@ -30,6 +30,16 @@ const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
 export const SERVER_NAME = "DBHub MCP Server";
 export const SERVER_VERSION = packageJson.version;
 
+// How long 2026-07-28 clients may cache tools/list without refetching
+// (2025-era responses never carry cache fields). The tool list only changes
+// on a TOML config hot reload, so this bounds how stale a modern client's
+// cached tool list can be after a reload.
+const TOOLS_LIST_CACHE_TTL_MS = 300_000;
+
+/** Per-surface error logger for the MCP serving entries. */
+const logMcpError = (scope: string) => (error: Error) =>
+  console.error(`MCP ${scope} error:`, error);
+
 /**
  * Generate ASCII art banner with version information
  */
@@ -107,7 +117,8 @@ See documentation for more details on configuring database connections.
     // Start watching TOML config file for hot reload (only when using TOML config).
     // In STDIO mode, tool list is registered once — hot reload updates connections and
     // tool registry, but STDIO clients won't see added/removed tools without restart.
-    // HTTP transport creates a new server per request, so tool changes apply immediately.
+    // HTTP transport creates a new server per request, so tool changes apply immediately
+    // (2026-07-28 clients may serve a cached tool list for up to TOOLS_LIST_CACHE_TTL_MS).
     const stopConfigWatcher = startConfigWatcher({
       connectorManager,
       initialTools: sourceConfigsData.tools,
@@ -122,12 +133,9 @@ See documentation for more details on configuring database connections.
           version: SERVER_VERSION,
         },
         {
-          // Cache hints for 2026-07-28 clients (2025-era responses never carry
-          // them). The tool list only changes on a TOML config hot reload, so
-          // let clients skip refetching tools/list for a while. `private`
-          // keeps caching client-side (no shared/proxy caches).
+          // `private` keeps caching client-side (no shared/proxy caches).
           cacheHints: {
-            "tools/list": { ttlMs: 300_000, cacheScope: "private" },
+            "tools/list": { ttlMs: TOOLS_LIST_CACHE_TTL_MS, cacheScope: "private" },
           },
         }
       );
@@ -246,12 +254,8 @@ See documentation for more details on configuring database connections.
       // the same per-request idiom DBHub hand-wired before. It also validates
       // the 2026-07-28 standard headers (Mcp-Method / Mcp-Name) against the
       // body on the modern path.
-      const mcpHandler = createMcpHandler(createServer, {
-        onerror: (error) => console.error("MCP handler error:", error),
-      });
-      const mcpNodeHandler = toNodeHandler(mcpHandler, {
-        onerror: (error) => console.error("MCP handler error:", error),
-      });
+      const mcpHandler = createMcpHandler(createServer, { onerror: logMcpError("handler") });
+      const mcpNodeHandler = toNodeHandler(mcpHandler, { onerror: logMcpError("adapter") });
 
       // express.json() has already consumed the request stream, so hand the
       // pre-parsed body to the adapter explicitly.
@@ -315,9 +319,7 @@ See documentation for more details on configuring database connections.
       // the era decision per connection: a 2026-07-28 opening is served
       // natively, a 2025-era `initialize` pins a legacy-era instance from the
       // same factory — same behavior as the previous hand-wired transport.
-      const stdioHandle = serveStdio(createServer, {
-        onerror: (error) => console.error("MCP stdio error:", error),
-      });
+      const stdioHandle = serveStdio(createServer, { onerror: logMcpError("stdio") });
       console.error("MCP server running on stdio");
 
       let isShuttingDown = false;

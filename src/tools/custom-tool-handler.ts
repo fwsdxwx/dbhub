@@ -84,6 +84,24 @@ export function buildZodSchemaFromParameters(
 }
 
 /**
+ * Wrapped input schema per tool config, cached by config object identity.
+ * createServer() runs per HTTP request, and both registration and the handler
+ * need the same schema — the cache means each ToolConfig's schema is built
+ * once (hot reload produces new config objects, so stale entries just get
+ * garbage collected).
+ */
+const customToolInputSchemas = new WeakMap<ToolConfig, z.ZodObject<Record<string, z.ZodTypeAny>>>();
+
+export function getCustomToolInputSchema(toolConfig: ToolConfig): z.ZodObject<Record<string, z.ZodTypeAny>> {
+  let schema = customToolInputSchemas.get(toolConfig);
+  if (!schema) {
+    schema = z.object(buildZodSchemaFromParameters(toolConfig.parameters));
+    customToolInputSchemas.set(toolConfig, schema);
+  }
+  return schema;
+}
+
+/**
  * Build input schema in MCP format (JSON Schema compatible)
  * @param parameters Parameter configurations from TOML
  * @returns JSON Schema object
@@ -154,10 +172,8 @@ export function buildInputSchema(parameters: ParameterConfig[] | undefined): {
  * @returns Handler function compatible with MCP server.registerTool
  */
 export function createCustomToolHandler(toolConfig: ToolConfig) {
-  // Build Zod schema shape for MCP registration
-  const zodSchemaShape = buildZodSchemaFromParameters(toolConfig.parameters);
-  // Wrap in z.object() for validation
-  const zodSchema = z.object(zodSchemaShape);
+  // Same schema object the tool was registered with (cached per config)
+  const zodSchema = getCustomToolInputSchema(toolConfig);
 
   return async (args: any, extra: any) => {
     const startTime = Date.now();

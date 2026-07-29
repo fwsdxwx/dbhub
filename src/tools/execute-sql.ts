@@ -12,10 +12,15 @@ import {
 } from "../utils/tool-handler-helpers.js";
 import { splitSQLStatements } from "../utils/sql-parser.js";
 
-// Schema for execute_sql tool
+// Schema for execute_sql tool. The raw shape stays exported for consumers
+// that iterate fields (zodToParameters); the wrapped object is built once at
+// module scope because createServer() runs per HTTP request and registration
+// converts the schema eagerly.
 export const executeSqlSchema = {
   sql: z.string().describe("SQL to execute (multiple statements separated by ;)"),
 };
+
+export const executeSqlInputSchema = z.object(executeSqlSchema);
 
 /**
  * Check if all SQL statements in a multi-statement query are read-only

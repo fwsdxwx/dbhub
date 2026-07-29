@@ -34,7 +34,9 @@ const symlinksSupported = checkSymlinkSupport();
 // every test in this file: parseSSHConfig falls back to scanning ~/.ssh/id_*
 // when a host has no IdentityFile, so with the real home the results depend on
 // whatever keys exist on the developer's machine. os.homedir() reads these env
-// vars, so no module mocking is needed.
+// vars, so no module mocking is needed. (vi.spyOn(os, 'homedir') does NOT work
+// here — ssh-config-parser.ts binds `homedir` via a named import, which the
+// namespace spy cannot intercept.)
 let fakeHome: string;
 let savedHome: { HOME?: string; USERPROFILE?: string };
 

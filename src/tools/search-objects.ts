@@ -53,6 +53,10 @@ export const searchDatabaseObjectsSchema = {
     .describe("Max results"),
 };
 
+// Wrapped once at module scope: createServer() runs per HTTP request and
+// registration converts the schema eagerly.
+export const searchDatabaseObjectsInputSchema = z.object(searchDatabaseObjectsSchema);
+
 /**
  * Convert SQL LIKE pattern to JavaScript regex
  * Supports % (any chars) and _ (single char)

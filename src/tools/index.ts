@@ -1,11 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/server";
-import { z } from "zod";
-import { createExecuteSqlToolHandler } from "./execute-sql.js";
-import { createSearchDatabaseObjectsToolHandler, searchDatabaseObjectsSchema } from "./search-objects.js";
+import { createExecuteSqlToolHandler, executeSqlInputSchema } from "./execute-sql.js";
+import { createSearchDatabaseObjectsToolHandler, searchDatabaseObjectsInputSchema } from "./search-objects.js";
 import { ConnectorManager } from "../connectors/manager.js";
 import { getExecuteSqlMetadata, getSearchObjectsMetadata } from "../utils/tool-metadata.js";
 import { isReadOnlySQL } from "../utils/allowed-keywords.js";
-import { createCustomToolHandler, buildZodSchemaFromParameters } from "./custom-tool-handler.js";
+import { createCustomToolHandler, getCustomToolInputSchema } from "./custom-tool-handler.js";
 import type { ToolConfig } from "../types/config.js";
 import { getToolRegistry } from "./registry.js";
 import { BUILTIN_TOOL_EXECUTE_SQL, BUILTIN_TOOL_SEARCH_OBJECTS } from "./builtin-tools.js";
@@ -54,7 +53,7 @@ function registerExecuteSqlTool(
     metadata.name,
     {
       description: metadata.description,
-      inputSchema: z.object(metadata.schema),
+      inputSchema: executeSqlInputSchema,
       annotations: metadata.annotations,
     },
     createExecuteSqlToolHandler(sourceId)
@@ -74,7 +73,7 @@ function registerSearchObjectsTool(
     metadata.name,
     {
       description: metadata.description,
-      inputSchema: z.object(searchDatabaseObjectsSchema),
+      inputSchema: searchDatabaseObjectsInputSchema,
       annotations: {
         title: metadata.title,
         readOnlyHint: true,
@@ -99,13 +98,12 @@ function registerCustomTool(
   const dbType = sourceConfig.type;
 
   const isReadOnly = isReadOnlySQL(toolConfig.statement!, dbType);
-  const zodSchema = buildZodSchemaFromParameters(toolConfig.parameters);
 
   server.registerTool(
     toolConfig.name,
     {
       description: toolConfig.description,
-      inputSchema: z.object(zodSchema),
+      inputSchema: getCustomToolInputSchema(toolConfig),
       annotations: {
         title: `${toolConfig.name} (${dbType})`,
         readOnlyHint: isReadOnly,

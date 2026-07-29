@@ -13,7 +13,7 @@
 export function getClientIdentifier(ctx: any): string {
   // MCP SDK v2 exposes the HTTP request as a Web Standard Request at ctx.http.req
   // (undefined on stdio transport)
-  const userAgent = ctx?.http?.req?.headers?.get?.("user-agent");
+  const userAgent = ctx?.http?.req?.headers.get("user-agent");
   if (userAgent) {
     return userAgent;
   }
