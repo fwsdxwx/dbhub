@@ -10,6 +10,22 @@ vi.mock('../toml-loader.js', () => ({
   loadTomlConfig: vi.fn(() => null),
 }));
 
+// Make dotenv a no-op by default so tests never pick up a real .env/.env.local
+// from the developer's working copy (loadEnvFiles also checks the package root,
+// so chdir alone can't isolate it). The one test that genuinely exercises .env
+// loading flips `dotenvState.passthrough` to use the real implementation.
+const dotenvState = vi.hoisted(() => ({ passthrough: false }));
+vi.mock('dotenv', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('dotenv')>();
+  return {
+    default: {
+      ...actual.default,
+      config: (options?: Parameters<typeof actual.default.config>[0]) =>
+        dotenvState.passthrough ? actual.default.config(options) : { parsed: {} },
+    },
+  };
+});
+
 describe('Environment Configuration Tests', () => {
   // Store original env values to restore after tests
   const originalEnv = { ...process.env };
@@ -48,47 +64,21 @@ describe('Environment Configuration Tests', () => {
       });
     });
 
-    it('should build MySQL DSN with default port when port not specified', () => {
-      process.env.DB_TYPE = 'mysql';
-      process.env.DB_HOST = 'mysql.example.com';
-      process.env.DB_USER = 'admin';
-      process.env.DB_PASSWORD = 'secret';
-      process.env.DB_NAME = 'myapp';
-
-      const result = buildDSNFromEnvParams();
-
-      expect(result).toEqual({
-        dsn: 'mysql://admin:secret@mysql.example.com:3306/myapp',
-        source: 'individual environment variables'
-      });
-    });
-
-    it('should build MariaDB DSN with default port', () => {
-      process.env.DB_TYPE = 'mariadb';
-      process.env.DB_HOST = 'mariadb.example.com';
+    it.each([
+      ['mysql', 3306],
+      ['mariadb', 3306],
+      ['sqlserver', 1433],
+    ])('should build %s DSN with default port %i when port not specified', (type, port) => {
+      process.env.DB_TYPE = type;
+      process.env.DB_HOST = `${type}.example.com`;
       process.env.DB_USER = 'user';
       process.env.DB_PASSWORD = 'pass';
-      process.env.DB_NAME = 'database';
+      process.env.DB_NAME = 'mydb';
 
       const result = buildDSNFromEnvParams();
 
       expect(result).toEqual({
-        dsn: 'mariadb://user:pass@mariadb.example.com:3306/database',
-        source: 'individual environment variables'
-      });
-    });
-
-    it('should build SQL Server DSN with default port', () => {
-      process.env.DB_TYPE = 'sqlserver';
-      process.env.DB_HOST = 'sqlserver.example.com';
-      process.env.DB_USER = 'sa';
-      process.env.DB_PASSWORD = 'strongpass';
-      process.env.DB_NAME = 'master';
-
-      const result = buildDSNFromEnvParams();
-
-      expect(result).toEqual({
-        dsn: 'sqlserver://sa:strongpass@sqlserver.example.com:1433/master',
+        dsn: `${type}://user:pass@${type}.example.com:${port}/mydb`,
         source: 'individual environment variables'
       });
     });
@@ -362,38 +352,19 @@ describe('Environment Configuration Tests', () => {
       expect(result).toBeNull();
     });
 
-    it('should resolve ID from environment variable', () => {
-      process.env.ID = 'prod';
+    it.each(['prod', 'staging-db-01', '123'])(
+      'should resolve ID %j from environment variable',
+      (id) => {
+        process.env.ID = id;
 
-      const result = resolveId();
+        const result = resolveId();
 
-      expect(result).toEqual({
-        id: 'prod',
-        source: 'environment variable'
-      });
-    });
-
-    it('should handle different ID formats', () => {
-      process.env.ID = 'staging-db-01';
-
-      const result = resolveId();
-
-      expect(result).toEqual({
-        id: 'staging-db-01',
-        source: 'environment variable'
-      });
-    });
-
-    it('should handle numeric IDs as strings', () => {
-      process.env.ID = '123';
-
-      const result = resolveId();
-
-      expect(result).toEqual({
-        id: '123',
-        source: 'environment variable'
-      });
-    });
+        expect(result).toEqual({
+          id,
+          source: 'environment variable'
+        });
+      }
+    );
   });
 
   describe('resolveHost', () => {
@@ -676,6 +647,7 @@ describe('Environment Configuration Tests', () => {
       fs.writeFileSync(path.join(dir, '.env'), 'DSN_FROM_ENV_FILE=sqlite://interpolated.db\n');
       process.chdir(dir);
       process.argv = ['node', 'script.js', '--config', path.join(dir, 'dbhub.toml')];
+      dotenvState.passthrough = true;
 
       try {
         const { resolveSourceConfigs } = await import('../env.js');
@@ -683,6 +655,7 @@ describe('Environment Configuration Tests', () => {
 
         expect(process.env.DSN_FROM_ENV_FILE).toBe('sqlite://interpolated.db');
       } finally {
+        dotenvState.passthrough = false;
         process.chdir(cwd);
         delete process.env.DSN_FROM_ENV_FILE;
         fs.rmSync(dir, { recursive: true, force: true });

@@ -30,6 +30,29 @@ function checkSymlinkSupport(): boolean {
 // Check symlink support once at module load time
 const symlinksSupported = checkSymlinkSupport();
 
+// Point HOME (and USERPROFILE on Windows) at an empty fake home directory for
+// every test in this file: parseSSHConfig falls back to scanning ~/.ssh/id_*
+// when a host has no IdentityFile, so with the real home the results depend on
+// whatever keys exist on the developer's machine. os.homedir() reads these env
+// vars, so no module mocking is needed.
+let fakeHome: string;
+let savedHome: { HOME?: string; USERPROFILE?: string };
+
+beforeEach(() => {
+  fakeHome = mkdtempSync(join(tmpdir(), 'dbhub-fake-home-'));
+  savedHome = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
+});
+
+afterEach(() => {
+  for (const key of ['HOME', 'USERPROFILE'] as const) {
+    if (savedHome[key] === undefined) delete process.env[key];
+    else process.env[key] = savedHome[key];
+  }
+  rmSync(fakeHome, { recursive: true, force: true });
+});
+
 describe('SSH Config Parser', () => {
   let tempDir: string;
   let configPath: string;
@@ -166,21 +189,37 @@ Host incomplete
     });
 
     it('should handle tilde expansion in identity file', () => {
-      // Mock a key file that would exist in home directory
-      const mockKeyPath = join(tempDir, 'mock_id_rsa');
+      // Key lives in the (fake) home directory and is referenced with ~/
+      const mockKeyPath = join(fakeHome, 'mock_id_rsa');
       writeFileSync(mockKeyPath, 'fake-key');
 
       const configContent = `
 Host tilde-test
   HostName tilde.example.com
   User tildeuser
-  IdentityFile ${mockKeyPath}
+  IdentityFile ~/mock_id_rsa
 `;
       writeFileSync(configPath, configContent);
 
       const result = parseSSHConfig('tilde-test', configPath);
       // Path is resolved to real path (e.g., on macOS /var -> /private/var)
       expect(result?.privateKey).toBe(realpathSync(mockKeyPath));
+    });
+
+    it('should fall back to a default ~/.ssh key when no IdentityFile is specified', () => {
+      mkdirSync(join(fakeHome, '.ssh'));
+      const defaultKeyPath = join(fakeHome, '.ssh', 'id_ed25519');
+      writeFileSync(defaultKeyPath, 'fake-default-key');
+
+      const configContent = `
+Host default-key-test
+  HostName default.example.com
+  User defaultkeyuser
+`;
+      writeFileSync(configPath, configContent);
+
+      const result = parseSSHConfig('default-key-test', configPath);
+      expect(result?.privateKey).toBe(realpathSync(defaultKeyPath));
     });
   });
 
