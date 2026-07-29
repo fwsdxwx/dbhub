@@ -17,8 +17,7 @@ describe('Data Sources API Integration Tests', () => {
   let manager: ConnectorManager;
   let app: Application;
   let server: Server;
-  const TEST_PORT = 13579; // Use a unique port to avoid conflicts
-  const BASE_URL = `http://localhost:${TEST_PORT}`;
+  let BASE_URL: string;
 
   beforeAll(async () => {
     // Initialize ConnectorManager with readonly-maxrows fixture
@@ -38,12 +37,17 @@ describe('Data Sources API Integration Tests', () => {
     app.get('/api/sources', listSources);
     app.get('/api/sources/:sourceId', getSource);
 
-    // Start server
+    // Start server on an ephemeral port to avoid conflicts
     await new Promise<void>((resolve) => {
-      server = app.listen(TEST_PORT, () => {
+      server = app.listen(0, () => {
         resolve();
       });
     });
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Server did not report a bound port');
+    }
+    BASE_URL = `http://localhost:${address.port}`;
   }, 30000);
 
   afterAll(async () => {

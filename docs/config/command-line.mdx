@@ -30,11 +30,13 @@ This page covers command-line flags and environment variables. For TOML configur
 ### --transport
 
 <ParamField path="--transport" type="string" env="TRANSPORT" default="stdio">
-  Transport protocol for [MCP communication](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).
+  Transport protocol for [MCP communication](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports).
 
   **Options:**
   - `stdio` - For desktop tools (Claude Desktop, Claude Code, Cursor). Pure MCP-over-stdio with no HTTP server.
   - `http` - For browser and network clients. Starts HTTP server with MCP endpoint, workbench, and API.
+
+  Both transports serve the stateless **2026-07-28** MCP protocol revision natively and fall back to the 2025-era protocol for older clients on the same endpoint — no configuration needed. On `http`, 2026-era clients send the standard `Mcp-Method` / `Mcp-Name` headers with every request, so a fronting gateway or WAF can route and rate-limit individual tools without parsing request bodies.
 
   | Feature | `stdio` | `http` |
   |---------|:-------:|:------:|

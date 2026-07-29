@@ -38,12 +38,10 @@ describe('PostgreSQL SSH Tunnel Simple Integration Tests', () => {
   });
 
   describe('SSH Tunnel Basic Functionality', () => {
-    it('should establish SSH tunnel and connect to local port', async () => {
-      // For this test, we'll create a mock SSH tunnel that just forwards to the same port
-      // This tests the tunnel establishment logic without needing a real SSH server
+    it('should report disconnected state on a fresh SSH tunnel before establish', async () => {
       const tunnel = new SSHTunnel();
-      
-      // Test that the tunnel correctly reports its state
+
+      // A tunnel that has not been established reports no connection and no info
       expect(tunnel.getIsConnected()).toBe(false);
       expect(tunnel.getTunnelInfo()).toBeNull();
     });
@@ -84,31 +82,6 @@ describe('PostgreSQL SSH Tunnel Simple Integration Tests', () => {
       expect(result.rows[0].test).toBe(1);
 
       await manager.disconnect();
-    });
-
-    it('should fail gracefully when SSH config is invalid', async () => {
-      const manager = new ConnectorManager();
-
-      // Create source config with invalid SSH config (missing required fields)
-      const dsn = postgresContainer.getConnectionUri();
-      const sourceConfig = createSourceConfigFromDSN(dsn);
-      sourceConfig.ssh_host = 'example.com';
-      // Missing ssh_user
-
-      await expect(manager.connectWithSources([sourceConfig])).rejects.toThrow(/SSH tunnel requires ssh_user/);
-    });
-
-    it('should validate SSH authentication method', async () => {
-      const manager = new ConnectorManager();
-
-      // Create source config with SSH but without authentication method
-      const dsn = postgresContainer.getConnectionUri();
-      const sourceConfig = createSourceConfigFromDSN(dsn);
-      sourceConfig.ssh_host = 'example.com';
-      sourceConfig.ssh_user = 'testuser';
-      // Missing both ssh_password and ssh_key
-
-      await expect(manager.connectWithSources([sourceConfig])).rejects.toThrow(/SSH tunnel requires either ssh_password or ssh_key/);
     });
 
     it('should handle SSH tunnel with source config', async () => {

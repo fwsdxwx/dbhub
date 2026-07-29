@@ -9,7 +9,8 @@ describe('JSON RPC Integration Tests', () => {
   let testDbPath: string;
   let baseUrl: string;
   let isolatedCwd: string;
-  const testPort = 3001;
+  // Randomize the port to avoid conflicts with other test files and stray servers
+  const testPort = 20000 + Math.floor(Math.random() * 20000);
   const startupLogs: string[] = [];
 
   beforeAll(async () => {
@@ -56,11 +57,11 @@ describe('JSON RPC Integration Tests', () => {
       startupLogs.push(data.toString());
     });
 
-    // Wait for server to start up
+    // Wait for server to start up (poll every 250ms, ~20s total)
     let serverReady = false;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 80; i++) {
       try {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 250));
         const response = await fetch(`${baseUrl}/mcp`, {
           method: 'POST',
           headers: {

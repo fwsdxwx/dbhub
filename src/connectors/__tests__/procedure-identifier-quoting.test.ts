@@ -49,23 +49,4 @@ describe("SHOW CREATE PROCEDURE identifier quoting", () => {
       expect(sql).toBe("SHOW CREATE PROCEDURE `test schema`.`get-data`");
     });
   });
-
-  describe("unquoted identifiers break with special characters", () => {
-    it("demonstrates the problem: spaces in names produce invalid SQL", () => {
-      const schema = "my schema";
-      const proc = "my procedure";
-      const unquotedSQL = `SHOW CREATE PROCEDURE ${schema}.${proc}`;
-      // This SQL is invalid and will cause MySQL syntax errors
-      expect(unquotedSQL).toBe("SHOW CREATE PROCEDURE my schema.my procedure");
-      // The database would parse "my" as the schema and "schema.my" as noise
-    });
-
-    it("demonstrates the problem: reserved words produce invalid SQL", () => {
-      const schema = "order";
-      const proc = "select";
-      const unquotedSQL = `SHOW CREATE PROCEDURE ${schema}.${proc}`;
-      // "order" and "select" are reserved words; MySQL will misparse this
-      expect(unquotedSQL).toBe("SHOW CREATE PROCEDURE order.select");
-    });
-  });
 });

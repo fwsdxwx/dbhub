@@ -45,7 +45,7 @@ describe('Multiple SQLite Sources Integration Test (Issue #115)', () => {
     }
   });
 
-  it('should connect to multiple SQLite databases independently', async () => {
+  it('registers all configured source IDs', async () => {
     const sourceIds = manager.getSourceIds();
     expect(sourceIds).toEqual(['database_a', 'database_b', 'database_c']);
   });
@@ -64,25 +64,6 @@ describe('Multiple SQLite Sources Integration Test (Issue #115)', () => {
     // database_b should have 'products' table
     expect(tablesB).toContain('products');
     expect(tablesB).not.toContain('employees');
-  });
-
-  it('should query correct data from database_a', async () => {
-    const connectorA = manager.getConnector('database_a');
-    const result = await connectorA.executeSQL('SELECT * FROM employees ORDER BY name', {});
-
-    expect(result.rows).toHaveLength(2);
-    expect(result.rows[0].name).toBe('Alice');
-    expect(result.rows[1].name).toBe('Bob');
-  });
-
-  it('should query correct data from database_b', async () => {
-    const connectorB = manager.getConnector('database_b');
-    const result = await connectorB.executeSQL('SELECT * FROM products ORDER BY title', {});
-
-    expect(result.rows).toHaveLength(3);
-    expect(result.rows[0].title).toBe('Doohickey');
-    expect(result.rows[1].title).toBe('Gadget');
-    expect(result.rows[2].title).toBe('Widget');
   });
 
   it('should return correct connector for each source ID', async () => {

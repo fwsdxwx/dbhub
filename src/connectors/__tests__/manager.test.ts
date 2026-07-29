@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectorManager } from "../manager.js";
+import { SSHTunnel } from "../../utils/ssh-tunnel.js";
 import type { SourceConfig } from "../../types/config.js";
 import { homedir } from "os";
 import { join } from "path";
@@ -72,10 +73,29 @@ describe("ConnectorManager SSH config resolution", () => {
       ssh_key: "/custom/key",
     };
 
-    await expect(manager.connectWithSources([source])).rejects.toThrow();
+    // Capture the merged SSH config at tunnel establishment
+    const establishSpy = vi.spyOn(SSHTunnel.prototype, "establish");
+    try {
+      establishSpy.mockRejectedValue(new Error("SSH connection failed (expected in test)"));
 
-    // Verify parseSSHConfig was still called (alias was resolved)
-    expect(mocks.parseSSHConfig).toHaveBeenCalled();
+      await expect(manager.connectWithSources([source])).rejects.toThrow();
+
+      // Verify parseSSHConfig was still called (alias was resolved)
+      expect(mocks.parseSSHConfig).toHaveBeenCalled();
+
+      // Explicit TOML fields win over the resolved SSH config values;
+      // the host still comes from the resolved alias.
+      expect(establishSpy).toHaveBeenCalledTimes(1);
+      const [sshConfig] = establishSpy.mock.calls[0];
+      expect(sshConfig).toMatchObject({
+        host: "bastion.example.com",
+        username: "override-user",
+        port: 3333,
+        privateKey: "/custom/key",
+      });
+    } finally {
+      establishSpy.mockRestore();
+    }
   });
 
   it("should throw when SSH alias not found and no ssh_user provided", async () => {

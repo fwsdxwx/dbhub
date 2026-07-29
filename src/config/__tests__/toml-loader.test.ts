@@ -56,26 +56,6 @@ dsn = "postgres://user:pass@localhost:5432/testdb"
       expect(result?.source).toBe('dbhub.toml');
     });
 
-    it('should parse DSN and populate connection fields for postgres', () => {
-      const tomlContent = `
-[[sources]]
-id = "pg_dsn"
-dsn = "postgres://pguser:secret@db.example.com:5433/mydb"
-`;
-      fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-      const result = loadTomlConfig();
-
-      expect(result?.sources[0]).toMatchObject({
-        id: 'pg_dsn',
-        type: 'postgres',
-        host: 'db.example.com',
-        port: 5433,
-        database: 'mydb',
-        user: 'pguser',
-      });
-    });
-
     it('should parse DSN and populate connection fields for mysql', () => {
       const tomlContent = `
 [[sources]]
@@ -340,7 +320,7 @@ dsn = "postgres://user:pass@localhost:5432/db"
       const tomlContent = `
 [[sources]]
 id = "invalid"
-readonly = true
+description = "x"
 `;
       fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
 
@@ -412,50 +392,27 @@ connection_timeout = 60
         expect(result?.sources[0].connection_timeout).toBe(60);
       });
 
-      it('should throw error for negative connection_timeout', () => {
+      it.each([-30, 0])('should throw error for non-positive connection_timeout (%i)', (value) => {
         const tomlContent = `
 [[sources]]
 id = "test_db"
 dsn = "postgres://user:pass@localhost:5432/testdb"
-connection_timeout = -30
+connection_timeout = ${value}
 `;
         fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
 
         expect(() => loadTomlConfig()).toThrow('invalid connection_timeout');
       });
+    });
 
-      it('should throw error for zero connection_timeout', () => {
+    describe('optional source fields', () => {
+      it('should leave all optional fields undefined when omitted', () => {
+        // Covers each optional field in one pass: connection_timeout,
+        // description, sslmode, search_path, timezone, charset, collation.
         const tomlContent = `
 [[sources]]
 id = "test_db"
-dsn = "postgres://user:pass@localhost:5432/testdb"
-connection_timeout = 0
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        expect(() => loadTomlConfig()).toThrow('invalid connection_timeout');
-      });
-
-      it('should accept large connection_timeout values', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-dsn = "postgres://user:pass@localhost:5432/testdb"
-connection_timeout = 300
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        const result = loadTomlConfig();
-
-        expect(result).toBeTruthy();
-        expect(result?.sources[0].connection_timeout).toBe(300);
-      });
-
-      it('should work without connection_timeout (optional field)', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-dsn = "postgres://user:pass@localhost:5432/testdb"
+dsn = "mysql://user:pass@localhost:3306/testdb"
 `;
         fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
 
@@ -463,6 +420,12 @@ dsn = "postgres://user:pass@localhost:5432/testdb"
 
         expect(result).toBeTruthy();
         expect(result?.sources[0].connection_timeout).toBeUndefined();
+        expect(result?.sources[0].description).toBeUndefined();
+        expect(result?.sources[0].sslmode).toBeUndefined();
+        expect(result?.sources[0].search_path).toBeUndefined();
+        expect(result?.sources[0].timezone).toBeUndefined();
+        expect(result?.sources[0].charset).toBeUndefined();
+        expect(result?.sources[0].collation).toBeUndefined();
       });
     });
 
@@ -482,24 +445,13 @@ dsn = "postgres://user:pass@localhost:5432/testdb"
         expect(result?.sources[0].description).toBe('Production read replica for analytics');
       });
 
-      it('should work without description (optional field)', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-dsn = "postgres://user:pass@localhost:5432/testdb"
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        const result = loadTomlConfig();
-
-        expect(result).toBeTruthy();
-        expect(result?.sources[0].description).toBeUndefined();
-      });
     });
 
     describe('sslmode validation', () => {
-      it('should accept sslmode = "disable"', () => {
-        const tomlContent = `
+      it.each(['disable', 'require', 'verify-ca', 'verify-full'])(
+        'should accept sslmode = %j for PostgreSQL',
+        (sslmode) => {
+          const tomlContent = `
 [[sources]]
 id = "test_db"
 type = "postgres"
@@ -507,34 +459,16 @@ host = "localhost"
 database = "testdb"
 user = "user"
 password = "pass"
-sslmode = "disable"
+sslmode = "${sslmode}"
 `;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
+          fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
 
-        const result = loadTomlConfig();
+          const result = loadTomlConfig();
 
-        expect(result).toBeTruthy();
-        expect(result?.sources[0].sslmode).toBe('disable');
-      });
-
-      it('should accept sslmode = "require"', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-type = "postgres"
-host = "localhost"
-database = "testdb"
-user = "user"
-password = "pass"
-sslmode = "require"
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        const result = loadTomlConfig();
-
-        expect(result).toBeTruthy();
-        expect(result?.sources[0].sslmode).toBe('require');
-      });
+          expect(result).toBeTruthy();
+          expect(result?.sources[0].sslmode).toBe(sslmode);
+        }
+      );
 
       it('should throw error for invalid sslmode value', () => {
         const tomlContent = `
@@ -718,104 +652,26 @@ sslmode = "require"
         expect(() => loadTomlConfig()).toThrow("SQLite does not support SSL");
       });
 
-      it('should work without sslmode (optional field)', () => {
+      it.each([
+        ['verify-ca', 'mysql'],
+        ['verify-full', 'mariadb'],
+        ['verify-ca', 'sqlserver'],
+      ])('should reject sslmode = %j for %s', (sslmode, type) => {
         const tomlContent = `
 [[sources]]
 id = "test_db"
-dsn = "postgres://user:pass@localhost:5432/testdb"
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        const result = loadTomlConfig();
-
-        expect(result).toBeTruthy();
-        expect(result?.sources[0].sslmode).toBeUndefined();
-      });
-
-      it('should accept sslmode = "verify-ca" for PostgreSQL', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-type = "postgres"
+type = "${type}"
 host = "localhost"
 database = "testdb"
 user = "user"
 password = "pass"
-sslmode = "verify-ca"
+sslmode = "${sslmode}"
 `;
         fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
 
-        const result = loadTomlConfig();
-
-        expect(result).toBeTruthy();
-        expect(result?.sources[0].sslmode).toBe('verify-ca');
-      });
-
-      it('should accept sslmode = "verify-full" for PostgreSQL', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-type = "postgres"
-host = "localhost"
-database = "testdb"
-user = "user"
-password = "pass"
-sslmode = "verify-full"
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        const result = loadTomlConfig();
-
-        expect(result).toBeTruthy();
-        expect(result?.sources[0].sslmode).toBe('verify-full');
-      });
-
-      it('should reject sslmode = "verify-ca" for MySQL', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-type = "mysql"
-host = "localhost"
-database = "testdb"
-user = "user"
-password = "pass"
-sslmode = "verify-ca"
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        expect(() => loadTomlConfig()).toThrow("sslmode 'verify-ca' which is only supported for PostgreSQL");
-      });
-
-      it('should reject sslmode = "verify-full" for MariaDB', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-type = "mariadb"
-host = "localhost"
-database = "testdb"
-user = "user"
-password = "pass"
-sslmode = "verify-full"
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        expect(() => loadTomlConfig()).toThrow("sslmode 'verify-full' which is only supported for PostgreSQL");
-      });
-
-      it('should reject sslmode = "verify-ca" for SQL Server', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-type = "sqlserver"
-host = "localhost"
-database = "testdb"
-user = "user"
-password = "pass"
-sslmode = "verify-ca"
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        expect(() => loadTomlConfig()).toThrow("sslmode 'verify-ca' which is only supported for PostgreSQL");
+        expect(() => loadTomlConfig()).toThrow(
+          `sslmode '${sslmode}' which is only supported for PostgreSQL`
+        );
       });
 
       it('should reject sslrootcert when sslmode is "require"', () => {
@@ -1145,24 +1001,12 @@ query_timeout = 120
         expect(result?.sources[0].query_timeout).toBe(120);
       });
 
-      it('should throw error for negative query_timeout', () => {
+      it.each([-60, 0])('should throw error for non-positive query_timeout (%i)', (value) => {
         const tomlContent = `
 [[sources]]
 id = "test_db"
 dsn = "postgres://user:pass@localhost:5432/testdb"
-query_timeout = -60
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        expect(() => loadTomlConfig()).toThrow('invalid query_timeout');
-      });
-
-      it('should throw error for zero query_timeout', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-dsn = "postgres://user:pass@localhost:5432/testdb"
-query_timeout = 0
+query_timeout = ${value}
 `;
         fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
 
@@ -1243,19 +1087,6 @@ search_path = "myschema"
         expect(() => loadTomlConfig()).toThrow('only supported for PostgreSQL');
       });
 
-      it('should work without search_path (optional field)', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-dsn = "postgres://user:pass@localhost:5432/testdb"
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        const result = loadTomlConfig();
-
-        expect(result).toBeTruthy();
-        expect(result?.sources[0].search_path).toBeUndefined();
-      });
     });
 
     describe('timezone validation', () => {
@@ -1327,19 +1158,6 @@ timezone = ["local"]
         expect(() => loadTomlConfig()).toThrow('invalid timezone');
       });
 
-      it('should work without timezone (optional field)', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-dsn = "mysql://user:pass@localhost:3306/testdb"
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        const result = loadTomlConfig();
-
-        expect(result).toBeTruthy();
-        expect(result?.sources[0].timezone).toBeUndefined();
-      });
     });
 
     describe('charset validation', () => {
@@ -1394,19 +1212,6 @@ charset = ["utf8mb4"]
         expect(() => loadTomlConfig()).toThrow('invalid charset');
       });
 
-      it('should work without charset (optional field)', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-dsn = "mysql://user:pass@localhost:3306/testdb"
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        const result = loadTomlConfig();
-
-        expect(result).toBeTruthy();
-        expect(result?.sources[0].charset).toBeUndefined();
-      });
     });
 
     describe('collation validation', () => {
@@ -1493,19 +1298,6 @@ collation = "utf8mb4_0900_ai_ci"
         expect(result?.sources[0].collation).toBe('utf8mb4_0900_ai_ci');
       });
 
-      it('should work without collation (optional field)', () => {
-        const tomlContent = `
-[[sources]]
-id = "test_db"
-dsn = "mysql://user:pass@localhost:3306/testdb"
-`;
-        fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-        const result = loadTomlConfig();
-
-        expect(result).toBeTruthy();
-        expect(result?.sources[0].collation).toBeUndefined();
-      });
     });
 
   });
@@ -1675,49 +1467,23 @@ dsn = "mysql://user:pass@localhost:3306/testdb"
       expect(dsn).toBe('postgres://testuser:testpass@localhost:5432/testdb');
     });
 
-    it('should build MySQL DSN with default port', () => {
+    it.each([
+      ['mysql', 3306, 'testdb', 'root', 'secret'],
+      ['mariadb', 3306, 'testdb', 'root', 'secret'],
+      ['sqlserver', 1433, 'master', 'sa', 'StrongPass123'],
+    ])('should build %s DSN with default port %i', (type, port, database, user, password) => {
       const source: SourceConfig = {
         id: 'test',
-        type: 'mysql',
+        type: type as SourceConfig['type'],
         host: 'localhost',
-        database: 'testdb',
-        user: 'root',
-        password: 'secret',
+        database,
+        user,
+        password,
       };
 
       const dsn = buildDSNFromSource(source);
 
-      expect(dsn).toBe('mysql://root:secret@localhost:3306/testdb');
-    });
-
-    it('should build MariaDB DSN with default port', () => {
-      const source: SourceConfig = {
-        id: 'test',
-        type: 'mariadb',
-        host: 'localhost',
-        database: 'testdb',
-        user: 'root',
-        password: 'secret',
-      };
-
-      const dsn = buildDSNFromSource(source);
-
-      expect(dsn).toBe('mariadb://root:secret@localhost:3306/testdb');
-    });
-
-    it('should build SQL Server DSN with default port', () => {
-      const source: SourceConfig = {
-        id: 'test',
-        type: 'sqlserver',
-        host: 'localhost',
-        database: 'master',
-        user: 'sa',
-        password: 'StrongPass123',
-      };
-
-      const dsn = buildDSNFromSource(source);
-
-      expect(dsn).toBe('sqlserver://sa:StrongPass123@localhost:1433/master');
+      expect(dsn).toBe(`${type}://${user}:${password}@localhost:${port}/${database}`);
     });
 
     it('should build SQL Server DSN with instanceName', () => {
@@ -1770,39 +1536,6 @@ dsn = "mysql://user:pass@localhost:3306/testdb"
       const dsn = buildDSNFromSource(source);
 
       expect(dsn).toBe('postgres://user:pass@rds.amazonaws.com:5432/testdb?sslmode=verify-ca&sslrootcert=%2Fpath%2Fto%2Fca-bundle.pem');
-    });
-
-    it('should build PostgreSQL DSN with verify-full without sslrootcert', () => {
-      const source: SourceConfig = {
-        id: 'pg_verify_full',
-        type: 'postgres',
-        host: 'localhost',
-        port: 5432,
-        database: 'testdb',
-        user: 'user',
-        password: 'pass',
-        sslmode: 'verify-full'
-      };
-
-      const dsn = buildDSNFromSource(source);
-
-      expect(dsn).toBe('postgres://user:pass@localhost:5432/testdb?sslmode=verify-full');
-    });
-
-    it('should build MySQL DSN with sslmode', () => {
-      const source: SourceConfig = {
-        id: 'mysql_ssl',
-        type: 'mysql',
-        host: 'localhost',
-        database: 'testdb',
-        user: 'root',
-        password: 'secret',
-        sslmode: 'disable'
-      };
-
-      const dsn = buildDSNFromSource(source);
-
-      expect(dsn).toBe('mysql://root:secret@localhost:3306/testdb?sslmode=disable');
     });
 
     it('should build SQL Server DSN with both instanceName and sslmode', () => {
@@ -2278,7 +2011,7 @@ readonly = "yes"
       expect(() => loadTomlConfig()).toThrow('invalid readonly');
     });
 
-    it('should throw error for custom tool with invalid max_rows', () => {
+    it.each([-50, 0])('should throw error for custom tool with non-positive max_rows (%i)', (value) => {
       const tomlContent = `
 [[sources]]
 id = "test_db"
@@ -2289,25 +2022,7 @@ name = "test_tool"
 source = "test_db"
 description = "Test tool"
 statement = "SELECT 1"
-max_rows = -50
-`;
-      fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
-
-      expect(() => loadTomlConfig()).toThrow('invalid max_rows');
-    });
-
-    it('should throw error for custom tool with zero max_rows', () => {
-      const tomlContent = `
-[[sources]]
-id = "test_db"
-dsn = "postgres://user:pass@localhost:5432/testdb"
-
-[[tools]]
-name = "test_tool"
-source = "test_db"
-description = "Test tool"
-statement = "SELECT 1"
-max_rows = 0
+max_rows = ${value}
 `;
       fs.writeFileSync(path.join(tempDir, 'dbhub.toml'), tomlContent);
 

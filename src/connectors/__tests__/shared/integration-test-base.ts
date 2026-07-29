@@ -98,18 +98,9 @@ export abstract class IntegrationTestBase<TContainer extends TestContainer> {
 
   createConnectionTests(): void {
     describe('Connection', () => {
-      it('should connect successfully to database container', async () => {
-        expect(this.connector).toBeDefined();
-      });
-
-      it('should parse DSN correctly', async () => {
-        const sampleDSN = this.connector.dsnParser.getSampleDSN();
-        expect(sampleDSN).toContain('://');
-        expect(this.connector.dsnParser.isValidDSN(sampleDSN)).toBe(true);
-      });
-
       it('should validate DSN format', () => {
         const sampleDSN = this.connector.dsnParser.getSampleDSN();
+        expect(sampleDSN).toContain('://');
         expect(this.connector.dsnParser.isValidDSN(sampleDSN)).toBe(true);
         expect(this.connector.dsnParser.isValidDSN('invalid-dsn')).toBe(false);
       });

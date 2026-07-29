@@ -41,69 +41,33 @@ describe("Custom Tool Handler", () => {
       expect(result.success).toBe(false);
     });
 
-    it("should build schema with integer parameter", () => {
+    it.each([
+      // [type, valid values, invalid values]
+      ["integer", [123], [123.45 /* not an integer */, "123" /* wrong type */]],
+      ["float", [123.45, 123 /* integers are valid floats */], ["123.45" /* wrong type */]],
+      ["boolean", [true, false], ["true" /* wrong type */]],
+      [
+        "array",
+        [[], [1, 2, 3], ["a", "b"]],
+        ["not-array"],
+      ],
+    ] as const)("should build schema with %s parameter", (type, validValues, invalidValues) => {
       const params: ParameterConfig[] = [
         {
-          name: "user_id",
-          type: "integer",
-          description: "User ID",
+          name: "value",
+          type,
+          description: "Value",
         },
       ];
       const schemaShape = buildZodSchemaFromParameters(params);
       const schema = z.object(schemaShape);
 
-      expect(schema.safeParse({ user_id: 123 }).success).toBe(true);
-      expect(schema.safeParse({ user_id: 123.45 }).success).toBe(false); // Not an integer
-      expect(schema.safeParse({ user_id: "123" }).success).toBe(false); // Wrong type
-    });
-
-    it("should build schema with float parameter", () => {
-      const params: ParameterConfig[] = [
-        {
-          name: "amount",
-          type: "float",
-          description: "Amount",
-        },
-      ];
-      const schemaShape = buildZodSchemaFromParameters(params);
-      const schema = z.object(schemaShape);
-
-      expect(schema.safeParse({ amount: 123.45 }).success).toBe(true);
-      expect(schema.safeParse({ amount: 123 }).success).toBe(true); // Integers are valid floats
-      expect(schema.safeParse({ amount: "123.45" }).success).toBe(false); // Wrong type
-    });
-
-    it("should build schema with boolean parameter", () => {
-      const params: ParameterConfig[] = [
-        {
-          name: "active",
-          type: "boolean",
-          description: "Is active",
-        },
-      ];
-      const schemaShape = buildZodSchemaFromParameters(params);
-      const schema = z.object(schemaShape);
-
-      expect(schema.safeParse({ active: true }).success).toBe(true);
-      expect(schema.safeParse({ active: false }).success).toBe(true);
-      expect(schema.safeParse({ active: "true" }).success).toBe(false); // Wrong type
-    });
-
-    it("should build schema with array parameter", () => {
-      const params: ParameterConfig[] = [
-        {
-          name: "tags",
-          type: "array",
-          description: "Tags",
-        },
-      ];
-      const schemaShape = buildZodSchemaFromParameters(params);
-      const schema = z.object(schemaShape);
-
-      expect(schema.safeParse({ tags: [] }).success).toBe(true);
-      expect(schema.safeParse({ tags: [1, 2, 3] }).success).toBe(true);
-      expect(schema.safeParse({ tags: ["a", "b"] }).success).toBe(true);
-      expect(schema.safeParse({ tags: "not-array" }).success).toBe(false);
+      for (const value of validValues) {
+        expect(schema.safeParse({ value }).success).toBe(true);
+      }
+      for (const value of invalidValues) {
+        expect(schema.safeParse({ value }).success).toBe(false);
+      }
     });
 
     it("should build schema with optional parameter (has default)", () => {
@@ -249,56 +213,23 @@ describe("Custom Tool Handler", () => {
       expect(schema.required).toEqual(["email"]);
     });
 
-    it("should build JSON Schema for integer parameter", () => {
+    it.each([
+      // [parameter type, expected JSON Schema type]
+      ["integer", "integer"],
+      ["float", "number"],
+      ["boolean", "boolean"],
+      ["array", "array"],
+    ] as const)("should build JSON Schema for %s parameter", (paramType, jsonType) => {
       const params: ParameterConfig[] = [
         {
-          name: "count",
-          type: "integer",
-          description: "Count",
+          name: "value",
+          type: paramType,
+          description: "Value",
         },
       ];
       const schema = buildInputSchema(params);
 
-      expect(schema.properties.count.type).toBe("integer");
-    });
-
-    it("should build JSON Schema for float parameter", () => {
-      const params: ParameterConfig[] = [
-        {
-          name: "amount",
-          type: "float",
-          description: "Amount",
-        },
-      ];
-      const schema = buildInputSchema(params);
-
-      expect(schema.properties.amount.type).toBe("number");
-    });
-
-    it("should build JSON Schema for boolean parameter", () => {
-      const params: ParameterConfig[] = [
-        {
-          name: "active",
-          type: "boolean",
-          description: "Active flag",
-        },
-      ];
-      const schema = buildInputSchema(params);
-
-      expect(schema.properties.active.type).toBe("boolean");
-    });
-
-    it("should build JSON Schema for array parameter", () => {
-      const params: ParameterConfig[] = [
-        {
-          name: "tags",
-          type: "array",
-          description: "Tags",
-        },
-      ];
-      const schema = buildInputSchema(params);
-
-      expect(schema.properties.tags.type).toBe("array");
+      expect(schema.properties.value.type).toBe(jsonType);
     });
 
     it("should include enum for allowed_values", () => {

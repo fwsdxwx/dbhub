@@ -21,8 +21,7 @@ function createRequest(overrides: Partial<Request> = {}): Request {
 describe("GET /api/requests - Integration Tests", () => {
   let app: Application;
   let server: Server;
-  const TEST_PORT = 13580; // Use a unique port to avoid conflicts
-  const BASE_URL = `http://localhost:${TEST_PORT}`;
+  let BASE_URL: string;
 
   beforeAll(async () => {
     // Set up Express app with API routes
@@ -30,12 +29,17 @@ describe("GET /api/requests - Integration Tests", () => {
     app.use(express.json());
     app.get("/api/requests", listRequests);
 
-    // Start server
+    // Start server on an ephemeral port to avoid conflicts
     await new Promise<void>((resolve) => {
-      server = app.listen(TEST_PORT, () => {
+      server = app.listen(0, () => {
         resolve();
       });
     });
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Server did not report a bound port");
+    }
+    BASE_URL = `http://localhost:${address.port}`;
   }, 30000);
 
   afterAll(async () => {
@@ -398,7 +402,7 @@ describe("GET /api/requests - Integration Tests", () => {
 
   describe("Edge Cases", () => {
     it("should handle large number of requests", async () => {
-      // Add 150 requests across 3 sources (50 each, but store caps at 100 per source)
+      // Add 150 requests across 3 sources (50 each); the endpoint returns all of them
       for (let i = 0; i < 50; i++) {
         requestStore.add(createRequest({ sourceId: "db1", id: `db1-${i}` }));
         requestStore.add(createRequest({ sourceId: "db2", id: `db2-${i}` }));

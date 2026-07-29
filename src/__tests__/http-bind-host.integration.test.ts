@@ -8,7 +8,8 @@ describe('HTTP bind host integration', () => {
   let serverProcess: ChildProcess | null = null;
   let testDbPath: string;
   let isolatedCwd: string;
-  const testPort = 3002;
+  // Randomize the port to avoid conflicts with other test files and stray servers
+  const testPort = 20000 + Math.floor(Math.random() * 20000);
   const testHost = '127.0.0.1';
   const startupLogs: string[] = [];
 
@@ -45,10 +46,10 @@ describe('HTTP bind host integration', () => {
       startupLogs.push(data.toString());
     });
 
-    // Wait for /healthz to respond on the configured host
+    // Wait for /healthz to respond on the configured host (poll every 250ms, ~30s total)
     let ready = false;
-    for (let i = 0; i < 30; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    for (let i = 0; i < 120; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
       try {
         const res = await fetch(`http://${testHost}:${testPort}/healthz`);
         if (res.status === 200) {

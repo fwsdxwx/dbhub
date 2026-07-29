@@ -85,25 +85,22 @@ describe("SQLRowLimiter", () => {
       expect(result).toBe("SELECT * FROM users LIMIT 100");
     });
 
-    it("should wrap parameterized LIMIT in subquery to enforce max_rows (PostgreSQL)", () => {
-      const sql = "SELECT * FROM users WHERE name = $1 LIMIT $2";
+    // Note: @p style parameters with LIMIT is not valid SQL Server syntax
+    // (SQL Server uses TOP, not LIMIT). The @p cases test the regex pattern only.
+    it.each([
+      { label: "PostgreSQL", p1: "$1", p2: "$2", semi: "" },
+      { label: "MySQL", p1: "?", p2: "?", semi: "" },
+      { label: "named parameters", p1: "@p1", p2: "@p2", semi: "" },
+      { label: "PostgreSQL, trailing semicolon", p1: "$1", p2: "$2", semi: ";" },
+      { label: "MySQL, trailing semicolon", p1: "?", p2: "?", semi: ";" },
+      { label: "named parameters, trailing semicolon", p1: "@p1", p2: "@p2", semi: ";" },
+    ])("should wrap parameterized LIMIT in subquery to enforce max_rows ($label)", ({ p1, p2, semi }) => {
+      const sql = `SELECT * FROM users WHERE name = ${p1} LIMIT ${p2}${semi}`;
       const result = SQLRowLimiter.applyMaxRows(sql, 1000);
       // Should wrap in subquery to enforce max_rows as hard cap
-      expect(result).toBe("SELECT * FROM (SELECT * FROM users WHERE name = $1 LIMIT $2) AS subq LIMIT 1000");
-    });
-
-    it("should wrap parameterized LIMIT in subquery to enforce max_rows (MySQL)", () => {
-      const sql = "SELECT * FROM users WHERE name = ? LIMIT ?";
-      const result = SQLRowLimiter.applyMaxRows(sql, 1000);
-      expect(result).toBe("SELECT * FROM (SELECT * FROM users WHERE name = ? LIMIT ?) AS subq LIMIT 1000");
-    });
-
-    it("should wrap parameterized LIMIT in subquery to enforce max_rows (named parameters)", () => {
-      // Note: @p style parameters with LIMIT is not valid SQL Server syntax
-      // (SQL Server uses TOP, not LIMIT). This tests the regex pattern only.
-      const sql = "SELECT * FROM users WHERE name = @p1 LIMIT @p2";
-      const result = SQLRowLimiter.applyMaxRows(sql, 1000);
-      expect(result).toBe("SELECT * FROM (SELECT * FROM users WHERE name = @p1 LIMIT @p2) AS subq LIMIT 1000");
+      expect(result).toBe(
+        `SELECT * FROM (SELECT * FROM users WHERE name = ${p1} LIMIT ${p2}) AS subq LIMIT 1000${semi}`
+      );
     });
 
     it("should use minimum of existing LIMIT and maxRows", () => {
@@ -131,26 +128,6 @@ describe("SQLRowLimiter", () => {
       expect(result).toBe("SELECT * FROM users LIMIT 100;");
     });
 
-    it("should preserve semicolon when wrapping parameterized LIMIT (PostgreSQL)", () => {
-      const sql = "SELECT * FROM users WHERE name = $1 LIMIT $2;";
-      const result = SQLRowLimiter.applyMaxRows(sql, 1000);
-      expect(result).toBe("SELECT * FROM (SELECT * FROM users WHERE name = $1 LIMIT $2) AS subq LIMIT 1000;");
-    });
-
-    it("should preserve semicolon when wrapping parameterized LIMIT (MySQL)", () => {
-      const sql = "SELECT * FROM users WHERE name = ? LIMIT ?;";
-      const result = SQLRowLimiter.applyMaxRows(sql, 1000);
-      expect(result).toBe("SELECT * FROM (SELECT * FROM users WHERE name = ? LIMIT ?) AS subq LIMIT 1000;");
-    });
-
-    it("should preserve semicolon when wrapping parameterized LIMIT (named parameters)", () => {
-      // Note: @p style parameters with LIMIT is not valid SQL Server syntax
-      // (SQL Server uses TOP, not LIMIT). This tests the regex pattern only.
-      const sql = "SELECT * FROM users WHERE name = @p1 LIMIT @p2;";
-      const result = SQLRowLimiter.applyMaxRows(sql, 1000);
-      expect(result).toBe("SELECT * FROM (SELECT * FROM users WHERE name = @p1 LIMIT @p2) AS subq LIMIT 1000;");
-    });
-
     it("should add LIMIT when 'limit' only appears in string literal", () => {
       const sql = "SELECT 'show limit 10 records' AS msg FROM users";
       const result = SQLRowLimiter.applyMaxRows(sql, 100);
@@ -163,7 +140,10 @@ describe("SQLRowLimiter", () => {
       expect(result).toBe("SELECT * FROM users /* limit 10 */ LIMIT 100");
     });
 
-    it("should add LIMIT when 'limit' only appears in single-line comment", () => {
+    it("appends LIMIT after a trailing line comment, leaving it inside the comment (known limitation — cap is textually present but inert)", () => {
+      // Known limitation: the LIMIT is appended to the end of the statement, which
+      // here lands inside the trailing `--` comment, so the engine ignores it and
+      // no row cap is actually enforced for this shape of query.
       const sql = "SELECT * FROM users -- limit 10";
       const result = SQLRowLimiter.applyMaxRows(sql, 100);
       expect(result).toBe("SELECT * FROM users -- limit 10 LIMIT 100");

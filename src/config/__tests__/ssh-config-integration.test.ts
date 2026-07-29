@@ -17,11 +17,19 @@ describe('SSH Config Integration', () => {
   beforeEach(() => {
     // Save original values
     originalArgs = process.argv;
-    
+
     // Clear mocks
     vi.clearAllMocks();
+
+    // Clear any SSH environment variables so values exported in the
+    // developer's shell can't leak into the first test
+    delete process.env.SSH_HOST;
+    delete process.env.SSH_USER;
+    delete process.env.SSH_PORT;
+    delete process.env.SSH_KEY;
+    delete process.env.SSH_PASSWORD;
   });
-  
+
   afterEach(() => {
     // Restore original values
     process.argv = originalArgs;

@@ -19,23 +19,19 @@ describe("buildSourceDescriptionPrefix", () => {
     expect(buildSourceDescriptionPrefix("Prod DB")).toBe("Prod DB. ");
   });
 
-  it("appends only a space when description already ends with a period", () => {
-    // Guards against the classic "Prod DB.. Execute SQL..." double-period bug.
-    expect(buildSourceDescriptionPrefix("Prod DB.")).toBe("Prod DB. ");
-  });
-
-  it("appends only a space when description ends with '!'", () => {
-    expect(buildSourceDescriptionPrefix("Production DB!")).toBe("Production DB! ");
-  });
-
-  it("appends only a space when description ends with '?'", () => {
-    expect(buildSourceDescriptionPrefix("Query me?")).toBe("Query me? ");
-  });
-
-  it("appends only a space when description ends with ':'", () => {
-    // A trailing colon naturally introduces what follows (the tool template),
-    // so adding '.' here would produce the artifact "Details below:. Execute..."
-    expect(buildSourceDescriptionPrefix("Details below:")).toBe("Details below: ");
+  /*
+   * Sentence terminators get only a trailing space, never an extra '.':
+   * - '.' guards against the classic "Prod DB.. Execute SQL..." double-period bug.
+   * - ':' naturally introduces what follows (the tool template), so adding '.'
+   *   would produce the artifact "Details below:. Execute...".
+   */
+  it.each([
+    ["Prod DB.", "Prod DB. "],
+    ["Production DB!", "Production DB! "],
+    ["Query me?", "Query me? "],
+    ["Details below:", "Details below: "],
+  ])("appends only a space when description ends with a terminator (%s)", (input, expected) => {
+    expect(buildSourceDescriptionPrefix(input)).toBe(expected);
   });
 
   it("trims surrounding whitespace before assessing punctuation", () => {
