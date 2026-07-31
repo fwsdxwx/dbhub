@@ -3,8 +3,10 @@
  *
  * Provides shared logic for parsing multi-statement SQL execution results
  * from different database drivers (MariaDB, MySQL2) that have similar but
- * slightly different result formats.
+ * slightly different result formats, into a list of per-statement result sets.
  */
+
+import type { SQLResultSet } from "../connectors/interface.js";
 
 /**
  * Checks if an element is a metadata object from INSERT/UPDATE/DELETE operations
@@ -45,86 +47,54 @@ function isMultiStatementResult(results: any): boolean {
 }
 
 /**
- * Extracts row arrays from multi-statement results, filtering out metadata objects.
- *
- * @param results - The raw results from a multi-statement query
- * @returns Array containing only the rows from SELECT queries
+ * Builds one `SQLResultSet` per statement from raw multi-statement driver
+ * results, preserving statement order. A `SELECT` becomes `{rows, rowCount:
+ * rows.length}`; an INSERT/UPDATE/DELETE metadata object becomes `{rows: [],
+ * rowCount: affectedRows}`. `statementTexts`, when its length matches the
+ * driver's result count, attributes each set to the statement that produced
+ * it - both drivers return one entry per statement in source order, so a
+ * length match means the pairing is exact, not a guess.
  */
-export function extractRowsFromMultiStatement(results: any): any[] {
-  if (!Array.isArray(results)) {
-    return [];
-  }
-
-  const allRows: any[] = [];
-
-  for (const result of results) {
+function buildResultSetsFromMultiStatement(results: any[], statementTexts?: string[]): SQLResultSet[] {
+  const sql = statementTexts?.length === results.length ? statementTexts : undefined;
+  return results.map((result, index) => {
     if (Array.isArray(result)) {
-      // This is a row array from a SELECT query - add all rows
-      allRows.push(...result);
+      return { sql: sql?.[index], rows: result, rowCount: result.length };
     }
-    // Skip metadata objects from INSERT/UPDATE/DELETE
-  }
-
-  return allRows;
+    if (isMetadataObject(result)) {
+      return { sql: sql?.[index], rows: [], rowCount: result.affectedRows || 0 };
+    }
+    return { sql: sql?.[index], rows: [], rowCount: 0 };
+  });
 }
 
 /**
- * Extracts total affected rows from query results.
+ * Parses raw database query results into a list of per-statement result
+ * sets, handling both single and multi-statement queries.
  *
- * For INSERT/UPDATE/DELETE operations, returns the sum of affectedRows.
- * For SELECT operations, returns the number of rows.
+ * This function unifies the result parsing logic for MariaDB and MySQL2
+ * drivers, which have similar but slightly different result formats.
  *
  * @param results - Raw results from the database driver
- * @returns Total number of affected/returned rows
+ * @param statementTexts - The original, source-order statement texts, used
+ * to attribute each result set to the statement that produced it
+ * @returns One `SQLResultSet` per statement, in execution order
  */
-export function extractAffectedRows(results: any): number {
-  // Handle metadata object (single INSERT/UPDATE/DELETE)
+export function parseQueryResultSets(results: any, statementTexts?: string[]): SQLResultSet[] {
+  const singleStatementSql = statementTexts?.length === 1 ? statementTexts[0] : undefined;
+
+  // Non-array results (e.g. a single INSERT/UPDATE/DELETE without RETURNING)
   if (isMetadataObject(results)) {
-    return results.affectedRows || 0;
+    return [{ sql: singleStatementSql, rows: [], rowCount: results.affectedRows || 0 }];
   }
-
-  // Handle non-array results
   if (!Array.isArray(results)) {
-    return 0;
+    return [{ sql: singleStatementSql, rows: [], rowCount: 0 }];
   }
 
-  // Check if this is a multi-statement result
   if (isMultiStatementResult(results)) {
-    let totalAffected = 0;
-    for (const result of results) {
-      if (isMetadataObject(result)) {
-        totalAffected += result.affectedRows || 0;
-      } else if (Array.isArray(result)) {
-        totalAffected += result.length;
-      }
-    }
-    return totalAffected;
+    return buildResultSetsFromMultiStatement(results, statementTexts);
   }
 
   // Single statement result - results is the rows array directly
-  return results.length;
-}
-
-/**
- * Parses database query results, handling both single and multi-statement queries.
- *
- * This function unifies the result parsing logic for MariaDB and MySQL2 drivers,
- * which have similar but slightly different result formats.
- *
- * @param results - Raw results from the database driver
- * @returns Array of row objects from SELECT queries
- */
-export function parseQueryResults(results: any): any[] {
-  // Handle non-array results (e.g., from INSERT/UPDATE/DELETE without RETURNING)
-  if (!Array.isArray(results)) {
-    return [];
-  }
-
-  // Check if this is a multi-statement result
-  if (isMultiStatementResult(results)) {
-    return extractRowsFromMultiStatement(results);
-  }
-
-  // Single statement result - results is the rows array directly
-  return results;
+  return [{ sql: singleStatementSql, rows: results, rowCount: results.length }];
 }

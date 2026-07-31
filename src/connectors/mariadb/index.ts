@@ -17,7 +17,7 @@ import { SafeURL } from "../../utils/safe-url.js";
 import { obfuscateDSNPassword } from "../../utils/dsn-obfuscate.js";
 import { requireDatabaseInDSN, MissingDatabaseError } from "../../utils/dsn-database.js";
 import { SQLRowLimiter } from "../../utils/sql-row-limiter.js";
-import { parseQueryResults, extractAffectedRows } from "../../utils/multi-statement-result-parser.js";
+import { parseQueryResultSets } from "../../utils/multi-statement-result-parser.js";
 import { splitSQLStatements } from "../../utils/sql-parser.js";
 import { withReadOnlyTransaction } from "../../utils/readonly-transaction.js";
 import { quoteIdentifier } from "../../utils/identifier-quoter.js";
@@ -649,12 +649,11 @@ export class MariaDBConnector implements Connector {
         options.readonly,
         this.supportsReadOnlyTransaction,
         async () => {
-          // Apply maxRows limit to SELECT queries if specified
+          // Split up front so the original statement text is available for
+          // attribution below, whether or not maxRows needs to rewrite it.
+          const statements = splitSQLStatements(sql, "mariadb");
           let processedSQL = sql;
           if (options.maxRows) {
-            // Handle multi-statement SQL by processing each statement individually
-            const statements = splitSQLStatements(sql, "mariadb");
-
             const processedStatements = statements.map(statement =>
               SQLRowLimiter.applyMaxRows(statement, options.maxRows)
             );
@@ -675,10 +674,9 @@ export class MariaDBConnector implements Connector {
           }
 
           // Parse results using shared utility that handles both single and multi-statement queries
-          const rows = parseQueryResults(results);
-          const rowCount = extractAffectedRows(results);
+          const resultSets = parseQueryResultSets(results, statements);
 
-          return { rows, rowCount };
+          return { resultSets };
         }
       );
     } finally {

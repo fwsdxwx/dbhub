@@ -5,6 +5,7 @@ import {
   ConnectorRegistry,
   DSNParser,
   SQLResult,
+  SQLResultSet,
   DatabaseMessage,
   TableColumn,
   TableIndex,
@@ -18,7 +19,7 @@ import { isDriverNotInstalled } from "../../utils/module-loader.js";
 import { SafeURL } from "../../utils/safe-url.js";
 import { obfuscateDSNPassword } from "../../utils/dsn-obfuscate.js";
 import { SQLRowLimiter } from "../../utils/sql-row-limiter.js";
-import { stripCommentsAndStrings } from "../../utils/sql-parser.js";
+import { splitSQLStatements, stripCommentsAndStrings } from "../../utils/sql-parser.js";
 import {
   sqlServerDynamicSqlKeywords,
   sqlServerDynamicSqlPattern,
@@ -762,13 +763,16 @@ export class SQLServerConnector implements Connector {
       if (options.maxRows) {
         processedSQL = SQLRowLimiter.applyMaxRowsForSQLServer(sqlQuery, options.maxRows);
       }
+      // Computed once and threaded into buildResultSets below (directly, or via
+      // executeReadOnly) rather than re-derived from SQL text on every call.
+      const isSingleStatement = splitSQLStatements(processedSQL, "sqlserver").length === 1;
 
       // Engine-level read-only enforcement: SQL Server has no
       // BEGIN TRANSACTION READ ONLY, so we wrap in a transaction and
       // unconditionally ROLLBACK to prevent any modifications from persisting.
       // This is defense-in-depth behind the keyword classifier.
       if (options.readonly) {
-        return await this.executeReadOnly(processedSQL, parameters);
+        return await this.executeReadOnly(processedSQL, parameters, isSingleStatement);
       }
 
       // Create request and collect informational messages (e.g. SET STATISTICS TIME/IO, PRINT)
@@ -792,13 +796,68 @@ export class SQLServerConnector implements Connector {
       const result = await request.query(processedSQL);
 
       return {
-        rows: result.recordset || [],
-        rowCount: result.rowsAffected[0] || 0,
+        resultSets: SQLServerConnector.buildResultSets(
+          result.recordsets,
+          result.rowsAffected,
+          isSingleStatement ? processedSQL : undefined,
+        ),
         ...(messages.length > 0 ? { messages } : {}),
       };
     } catch (error) {
       throw new Error(`Failed to execute query: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * Builds one result set per SELECT-producing statement in the batch, plus
+   * (if any) a trailing result set summarizing the write-only statements.
+   *
+   * node-mssql only pushes a `recordsets` entry for statements that produce
+   * columns (SELECT); INSERT/UPDATE/DELETE statements in the same batch
+   * contribute to `rowsAffected` only, with no way to recover which
+   * `rowsAffected` entry belongs to which statement from the driver's final
+   * arrays (`recordsets`/`rowsAffected` aren't index-aligned - see the
+   * tedious `doneHandler`, which always pushes to `rowsAffected` but only
+   * conditionally to `recordsets`). So a batch of pure writes collapses to a
+   * single summed result set, and a batch mixing writes with selects gets
+   * one result set per select plus one trailing "writes" set for the rest -
+   * not a truly per-statement breakdown, but no read statement's rows are
+   * ever merged with another's, which is what mattered for #380.
+   *
+   * `sourceSql`, when given, is attributed to the single resulting set - it
+   * must be omitted (pass `undefined`) unless the caller has already
+   * confirmed the batch is unambiguously one statement, since for a genuine
+   * multi-statement batch there's no reliable way to say which source
+   * statement a given recordset (or the trailing writes set) came from.
+   */
+  private static buildResultSets(
+    recordsets: any,
+    rowsAffected: number[] | undefined,
+    sourceSql: string | undefined,
+  ): SQLResultSet[] {
+    const sets: SQLResultSet[] = (recordsets ?? []).map((recordset: any) => {
+      const rows = recordset ?? [];
+      return { rows, rowCount: rows.length };
+    });
+
+    const totalAffected = (rowsAffected ?? []).reduce((total, count) => total + (count ?? 0), 0);
+    const accountedFor = sets.reduce((total, set) => total + set.rowCount, 0);
+    const writesOnly = totalAffected - accountedFor;
+
+    if (sets.length === 0) {
+      sets.push({ rows: [], rowCount: totalAffected });
+    } else if (writesOnly > 0) {
+      sets.push({ rows: [], rowCount: writesOnly });
+    }
+
+    // A pure-writes batch collapses to one synthetic set above regardless of
+    // how many write statements it actually had, so sourceSql being given is
+    // not on its own proof of a single statement - the caller's
+    // isSingleStatement check (done once, from the real source text) is.
+    if (sets.length === 1 && sourceSql !== undefined) {
+      sets[0].sql = sourceSql;
+    }
+    return sets;
   }
 
   /**
@@ -898,6 +957,7 @@ export class SQLServerConnector implements Connector {
   private async executeReadOnly(
     processedSQL: string,
     parameters?: any[],
+    isSingleStatement?: boolean,
   ): Promise<SQLResult> {
     this.assertNoReadOnlyEscapes(processedSQL, { transactionControl: true });
 
@@ -939,8 +999,11 @@ export class SQLServerConnector implements Connector {
       }
     }
     return {
-      rows: result.recordset || [],
-      rowCount: result.rowsAffected[0] || 0,
+      resultSets: SQLServerConnector.buildResultSets(
+        result.recordsets,
+        result.rowsAffected,
+        isSingleStatement ? processedSQL : undefined,
+      ),
       ...(messages.length > 0 ? { messages } : {}),
     };
   }
@@ -1014,8 +1077,12 @@ export class SQLServerConnector implements Connector {
       const planRow = planResult.recordset?.[0];
       const planXml = planRow ? Object.values(planRow)[0] : null;
       return {
-        rows: planXml != null ? [{ plan: planXml }] : [],
-        rowCount: planXml != null ? 1 : 0,
+        resultSets: [
+          {
+            rows: planXml != null ? [{ plan: planXml }] : [],
+            rowCount: planXml != null ? 1 : 0,
+          },
+        ],
       };
     } catch (error) {
       throw new Error(`Failed to explain query: ${(error as Error).message}`);
@@ -1177,8 +1244,12 @@ export class SQLServerConnector implements Connector {
 
       const planXml = SQLServerConnector.extractPlanXml(planResult);
       return {
-        rows: planXml != null ? [{ plan: planXml }] : [],
-        rowCount: planXml != null ? 1 : 0,
+        resultSets: [
+          {
+            rows: planXml != null ? [{ plan: planXml }] : [],
+            rowCount: planXml != null ? 1 : 0,
+          },
+        ],
       };
     } catch (error) {
       // Named apart from the plain EXPLAIN path: this one ran the statement, so

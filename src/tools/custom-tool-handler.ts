@@ -13,6 +13,7 @@ import {
 import { mapArgumentsToArray } from "../utils/parameter-mapper.js";
 import {
   createReadonlyViolationMessage,
+  toStatementsPayload,
   trackToolRequest,
   tryClassifyConnectionError,
 } from "../utils/tool-handler-helpers.js";
@@ -220,10 +221,11 @@ export function createCustomToolHandler(toolConfig: ToolConfig) {
         paramValues
       );
 
-      // 8. Build response data
+      // 8. Build response data. A custom tool's statement is usually one
+      // SQL statement, but isn't restricted to be - surface every statement's
+      // result rather than assuming exactly one.
       const responseData = {
-        rows: result.rows,
-        count: result.rowCount,
+        statements: toStatementsPayload(result.resultSets),
         source_id: toolConfig.source,
       };
 

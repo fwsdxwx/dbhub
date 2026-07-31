@@ -7,6 +7,7 @@ import { getToolRegistry } from "./registry.js";
 import { BUILTIN_TOOL_EXECUTE_SQL } from "./builtin-tools.js";
 import {
   getEffectiveSourceId,
+  toStatementsPayload,
   trackToolRequest,
   tryClassifyConnectionError,
 } from "../utils/tool-handler-helpers.js";
@@ -65,10 +66,11 @@ export function createExecuteSqlToolHandler(sourceId?: string) {
       };
       result = await connector.executeSQL(sql, executeOptions);
 
-      // Build response data
+      // Build response data. Every statement in the batch gets its own
+      // entry - a single SELECT (the common case) is `statements` of length
+      // 1, rather than rows from different statements being merged.
       const responseData = {
-        rows: result.rows,
-        count: result.rowCount,
+        statements: toStatementsPayload(result.resultSets),
         source_id: effectiveSourceId,
         ...(result.messages && result.messages.length > 0 ? { messages: result.messages } : {}),
       };

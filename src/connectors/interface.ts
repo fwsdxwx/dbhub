@@ -24,9 +24,27 @@ export interface DatabaseMessage {
   line?: number;
 }
 
-export interface SQLResult {
+/** The rows and affected-row count produced by one statement in a batch. */
+export interface SQLResultSet {
+  /**
+   * The source text of the statement that produced this result set, when the
+   * connector can attribute it unambiguously. Omitted for SQL Server batches
+   * with more than one statement, where node-mssql's recordsets/rowsAffected
+   * arrays aren't index-aligned per statement (see sqlserver's
+   * `buildResultSets`) - attributing SQL there would be a guess.
+   */
+  sql?: string;
   rows: any[];
   rowCount: number;
+}
+
+export interface SQLResult {
+  /**
+   * One entry per statement in the batch, in execution order. A single
+   * `SELECT` (the common case) is `resultSets` of length 1 - callers that
+   * only care about that should read `resultSets[0]`.
+   */
+  resultSets: SQLResultSet[];
   /** Informational messages from the database (e.g. SQL Server STATISTICS TIME/IO, PRINT output) */
   messages?: DatabaseMessage[];
 }
