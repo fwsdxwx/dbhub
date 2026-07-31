@@ -467,6 +467,47 @@ function splitHostList(value: string): string[] {
 }
 
 /**
+ * Resolve the list of bearer tokens accepted by the HTTP transport.
+ *
+ * Sources (highest priority first):
+ *   1. --auth-token=token1,token2
+ *   2. DBHUB_AUTH_TOKEN=token1,token2 environment variable
+ *
+ * An empty list (the default) means auth is disabled — configuring a token
+ * is itself the opt-in, so there is no separate "--require-auth" flag to
+ * forget. A comma-separated list supports zero-downtime token rotation (add
+ * the new token, redeploy, remove the old one) and per-client tokens.
+ */
+export function resolveAuthTokens(): { tokens: string[]; source: string } {
+  const args = parseCommandLineArgs();
+
+  const cliValue = requireFlagValue("auth-token", args, "secret1,secret2");
+  if (cliValue !== undefined) {
+    return { tokens: splitTokenList(cliValue), source: "command line argument" };
+  }
+
+  const envValue = process.env.DBHUB_AUTH_TOKEN?.trim();
+  if (envValue) {
+    return { tokens: splitTokenList(envValue), source: "environment variable" };
+  }
+
+  return { tokens: [], source: "default" };
+}
+
+/**
+ * Split a comma-separated token list, trimming and dropping empty entries.
+ * Deliberately separate from `splitHostList()` even though the bodies match
+ * today: hostnames may later gain normalization (lowercasing, port-stripping)
+ * that must never apply to tokens, which are compared byte-for-byte.
+ */
+function splitTokenList(value: string): string[] {
+  return value
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+/**
  * Redact sensitive information from a DSN string
  * Replaces the password with asterisks
  * @param dsn - The DSN string to redact
