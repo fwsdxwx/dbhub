@@ -1,4 +1,4 @@
-# Workflow for publishing the DBHub package to npm
+# Workflow for publishing the DBHub package to npm and the MCP Registry
 # This workflow has two trigger modes:
 #
 # 1. Manual trigger (workflow_dispatch):
@@ -10,6 +10,11 @@
 #    - Automatically determines the appropriate npm tag based on version format
 #    - Skips publishing if the version already exists on npm
 #
+# After a successful npm publish, the same job publishes server.json to the MCP
+# Registry (the registry validates that the referenced npm package version
+# exists, so this must run after npm publish succeeds). A guard skips the
+# registry publish if server.json's version is already registered.
+#
 # Authentication: Uses OIDC trusted publishing (no npm tokens required)
 # Prerequisites: Configure trusted publisher at https://www.npmjs.com/package/@bytebase/dbhub/access
 #   - Organization/User: bytebase (or your npm org)
@@ -17,7 +22,7 @@
 #   - Workflow filename: npm-publish.yml
 #   - Environment: (leave empty unless using GitHub environments)
 
-name: Publish to npm
+name: Publish to npm and MCP Registry
 
 on:
   # Manual trigger with customizable version and tag
@@ -164,6 +169,41 @@ jobs:
           # No NODE_AUTH_TOKEN needed - authentication via GitHub OIDC
           npm publish --access public --tag ${{ env.NPM_TAG }} --provenance
           echo "✅ Successfully published to npm with provenance!"
+
+      # ---- MCP Registry publish (runs only after a successful npm publish) ----
+      # The registry validates that the npm package version referenced by
+      # server.json exists, so these steps must come after npm publish.
+
+      # Skip if server.json's version is already in the MCP Registry (e.g. a
+      # manual npm re-publish where server.json didn't change).
+      - name: Check MCP Registry for existing version
+        if: env.SHOULD_PUBLISH == 'true'
+        run: |
+          NAME=$(jq -r '.name' server.json)
+          VERSION=$(jq -r '.version' server.json)
+          ENCODED_NAME=$(jq -rn --arg n "$NAME" '$n | @uri')
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://registry.modelcontextprotocol.io/v0/servers/${ENCODED_NAME}/versions/${VERSION}")
+          if [ "$STATUS" = "200" ]; then
+            echo "Version ${VERSION} of ${NAME} already exists in the MCP Registry. Skipping registry publish."
+            echo "SHOULD_PUBLISH_MCP=false" >> $GITHUB_ENV
+          else
+            echo "Version ${VERSION} of ${NAME} is new (registry returned ${STATUS}). Proceeding with registry publish."
+            echo "SHOULD_PUBLISH_MCP=true" >> $GITHUB_ENV
+          fi
+
+      - name: Install MCP Publisher
+        if: env.SHOULD_PUBLISH == 'true' && env.SHOULD_PUBLISH_MCP == 'true'
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/download/v1.7.9/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Login to MCP Registry
+        if: env.SHOULD_PUBLISH == 'true' && env.SHOULD_PUBLISH_MCP == 'true'
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        if: env.SHOULD_PUBLISH == 'true' && env.SHOULD_PUBLISH_MCP == 'true'
+        run: ./mcp-publisher publish
 
       # Display a message when skipping publication
       - name: Skip publishing
