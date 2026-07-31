@@ -30,7 +30,7 @@
                  MCP Clients           MCP Server             Databases
 ```
 
-DBHub is a token efficient, zero-dependenc MCP server implementing the Model Context Protocol (MCP) server interface. This lightweight gateway allows MCP-compatible clients to connect to and explore different databases:
+DBHub is a token efficient, zero-dependency MCP server implementing the Model Context Protocol (MCP) server interface. This lightweight gateway allows MCP-compatible clients to connect to and explore different databases:
 
 - **Local Development First**: Zero dependency, token efficient with a minimal set of MCP tools to maximize context window
 - **Multi-Database**: PostgreSQL, MySQL, MariaDB, SQL Server, and SQLite through a single interface
