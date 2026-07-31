@@ -213,8 +213,8 @@ export function getExplainSqlMetadata(sourceId: string): ToolMetadata {
   );
 
   const description = isSingleSource
-    ? `${userDescPrefix}Show the execution plan for a SQL statement on the ${dbType} database without running it. Always read-only and safe, independent of the source's read/write mode.`
-    : `${userDescPrefix}Show the execution plan for a SQL statement on the '${sourceId}' ${dbType} database without running it. Always read-only and safe, independent of the source's read/write mode.`;
+    ? `${userDescPrefix}Show the execution plan for a SQL statement on the ${dbType} database without running it (always read-only).`
+    : `${userDescPrefix}Show the execution plan for a SQL statement on the '${sourceId}' ${dbType} database without running it (always read-only).`;
 
   const annotations = {
     title,
@@ -245,8 +245,8 @@ export function getHealthCheckMetadata(sourceId: string): ToolMetadata {
   );
 
   const description = isSingleSource
-    ? `${userDescPrefix}Report operational health metrics (connection pool state, buffer cache hit ratio) for the ${dbType} database. Read-only, independent of the source's read/write mode.`
-    : `${userDescPrefix}Report operational health metrics (connection pool state, buffer cache hit ratio) for the '${sourceId}' ${dbType} database. Read-only, independent of the source's read/write mode.`;
+    ? `${userDescPrefix}Report connection pool and buffer cache health metrics for the ${dbType} database (read-only).`
+    : `${userDescPrefix}Report connection pool and buffer cache health metrics for the '${sourceId}' ${dbType} database (read-only).`;
 
   const annotations = {
     title,
@@ -317,13 +317,13 @@ function buildSearchObjectsTool(sourceId: string): Tool {
         name: "object_type",
         type: "string",
         required: true,
-        description: "Object type to search: schema, table, view, column, procedure, function, index",
+        description: "Object type to search",
       },
       {
         name: "pattern",
         type: "string",
         required: false,
-        description: "LIKE pattern (% = any chars, _ = one char). Default: %",
+        description: "LIKE pattern (% = any chars, _ = one char)",
       },
       {
         name: "schema",
@@ -347,7 +347,7 @@ function buildSearchObjectsTool(sourceId: string): Tool {
         name: "limit",
         type: "integer",
         required: false,
-        description: "Max results (default: 100, max: 1000)",
+        description: "Max results",
       },
     ],
     readonly: true, // search_objects is always readonly
