@@ -230,7 +230,7 @@ Always use parameter placeholders. Never concatenate user input into SQL stateme
 
 ### Readonly Mode
 
-The `readonly` setting on `execute_sql` only affects that tool. Custom tools are controlled by their SQL statement - DBHub analyzes the statement to determine if it's read-only.
+The `readonly` field is only valid on `execute_sql`; configuring it on a custom tool is a startup validation error. Custom tools always execute their statement — DBHub still analyzes the statement to classify it as read or write, but that classification only sets the tool's `readOnlyHint` annotation (a hint for MCP clients), it does not block writes.
 
 ```toml
 # Configure execute_sql as read-only
@@ -239,7 +239,7 @@ name = "execute_sql"
 source = "prod_pg"
 readonly = true
 
-# Custom tools are unaffected by readonly setting
+# Custom tools cannot set `readonly` and are unaffected by execute_sql's setting
 [[tools]]
 name = "get_user_by_id"
 source = "prod_pg"
@@ -250,6 +250,10 @@ name = "user_id"
 type = "integer"
 description = "User ID"
 ```
+
+<Warning>
+If you need a custom tool restricted to reads, keep its `statement` read-only yourself — DBHub does not enforce this for custom tools.
+</Warning>
 
 ### Max Rows Enforcement
 

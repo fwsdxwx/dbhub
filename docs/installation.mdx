@@ -112,8 +112,6 @@ The [Claude Code Plugin](/claude-code-plugin) registers the DBHub MCP server in 
         container_name: dbhub
         ports:
           - "8080:8080"
-        environment:
-          - DBHUB_LOG_LEVEL=info
         command:
           - --transport
           - http

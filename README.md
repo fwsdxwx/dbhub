@@ -60,61 +60,17 @@ DBHub includes a [built-in web interface](https://dbhub.ai/workbench/overview) f
 
 ## Installation
 
-See the full [Installation Guide](https://dbhub.ai/installation) for detailed instructions.
-
-### Quick Start
-
-**Docker:**
-
-```bash
-docker run --rm --init \
-   --name dbhub \
-   --publish 8080:8080 \
-   bytebase/dbhub \
-   --transport http \
-   --port 8080 \
-   --dsn "postgres://user:password@localhost:5432/dbname?sslmode=disable"
-```
-
-**NPM:** (requires Node.js >= 22.5.0)
-
 ```bash
 npx @bytebase/dbhub@latest --transport http --port 8080 --dsn "postgres://user:password@localhost:5432/dbname?sslmode=disable"
 ```
 
-**MCP Bundle (one-click install):**
+Also available as:
 
-Download `dbhub-<version>.mcpb` from the [latest release](https://github.com/bytebase/dbhub/releases/latest) and install it in any [MCPB-compatible client](https://github.com/modelcontextprotocol/mcpb) — Claude Desktop (double-click, or drag into Settings → Extensions), Claude Code, or MCP for Windows — then enter your database connection string. The bundle runs locally over stdio, is **read-only by design** (writes are rejected and the database session is set to read-only at the engine level), and needs no remote endpoint or OAuth setup — ideal for giving non-technical teammates curated, read-only database access. Pair it with a least-privilege, read-only database account. See the [MCP Bundle guide](https://dbhub.ai/mcpb) for details and for packaging your own bundle.
+- [Docker image](https://dbhub.ai/installation#docker)
+- [MCP Bundle](https://dbhub.ai/mcpb) (one-click install, read-only)
+- [Claude Code plugin](https://dbhub.ai/claude-code-plugin)
 
-**Claude Code Plugin:**
-
-For Claude Code, the [DBHub plugin](https://dbhub.ai/claude-code-plugin) registers the MCP server with one install command — Claude Code prompts for your connection string and stores it in secure storage — and adds `/dbhub:setup` and `/dbhub:explore` skills. Read-only by design, like the MCP Bundle.
-
-**Demo Mode:**
-
-```bash
-npx @bytebase/dbhub@latest --transport http --port 8080 --demo
-```
-
-**Restrict to loopback (recommended for production):**
-
-```bash
-npx @bytebase/dbhub@latest --transport http --host 127.0.0.1 --port 8080 --demo
-```
-
-> The HTTP transport defaults to `--host 0.0.0.0`, exposing DBHub on every network interface. For production, bind to `127.0.0.1` and front DBHub with a reverse proxy (nginx/Caddy) or firewall — DBHub does not authenticate HTTP clients.
->
-> The HTTP transport also has built-in DNS-rebinding protection: it only accepts requests whose `Host` is loopback, this machine's own hostname/IPs, or a name you allow via [`--allowed-hosts`](https://dbhub.ai/config/command-line#allowed-hosts). If a client behind a reverse proxy or custom DNS name gets a `403`, add that hostname with `--allowed-hosts`.
->
-> DBHub serves both MCP protocol eras on the same `/mcp` endpoint: the stateless **2026-07-28** revision (cacheable `tools/list`, no session state — safe behind round-robin load balancers) and the 2025-era Streamable HTTP protocol for older clients. 2026-era clients send the standard `Mcp-Method` / `Mcp-Name` headers on every request, so a fronting gateway or WAF can route and rate-limit `execute_sql` separately from `search_objects` without parsing JSON bodies.
-
-See [Command-Line Options](https://dbhub.ai/config/command-line) for all available parameters.
-
-### Multi-Database Setup
-
-Connect to multiple databases simultaneously using TOML configuration files. Perfect for managing production, staging, and development databases from a single DBHub instance.
-
-See [Multi-Database Configuration](https://dbhub.ai/config/toml) for complete setup instructions.
+See the [Installation Guide](https://dbhub.ai/installation) for all options, [Command-Line Options](https://dbhub.ai/config/command-line) for parameters, and [Multi-Database Configuration](https://dbhub.ai/config/toml) for connecting several databases at once.
 
 ## Development
 

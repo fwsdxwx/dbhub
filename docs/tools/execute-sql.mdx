@@ -110,11 +110,6 @@ name = "execute_sql"
 source = "production"
 readonly = true
 ```
-
-```bash Command Line (Deprecated)
-# This flag is deprecated - use TOML configuration instead
-npx @bytebase/dbhub@latest --readonly --dsn "postgres://user:pass@localhost:5432/mydb"
-```
 </CodeGroup>
 
 In read-only mode, DBHub enforces read-only access in two layers:
@@ -157,11 +152,6 @@ dsn = "postgres://..."
 name = "execute_sql"
 source = "production"
 max_rows = 1000
-```
-
-```bash Command Line (Deprecated)
-# This flag is deprecated - use TOML configuration instead
-npx @bytebase/dbhub@latest --max-rows 1000 --dsn "..."
 ```
 </CodeGroup>
 

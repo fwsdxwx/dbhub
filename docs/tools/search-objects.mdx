@@ -6,9 +6,10 @@ Search and list database objects (schemas, tables, columns, procedures, function
 
 ## Parameters
 
-- `object_type` (required): Type of object to search - `"schema"`, `"table"`, `"column"`, `"procedure"`, `"function"`, or `"index"`
+- `object_type` (required): Type of object to search - `"schema"`, `"table"`, `"view"`, `"column"`, `"procedure"`, `"function"`, or `"index"`
 - `pattern` (optional): Search pattern using SQL LIKE syntax (`%` for wildcard, `_` for single character). Defaults to `"%"` (match all)
 - `schema` (optional): Filter results to a specific schema
+- `table` (optional): Filter to a specific table (requires `schema`; only applies when `object_type` is `"column"` or `"index"`)
 - `detail_level` (optional): Level of detail - `"names"` (default), `"summary"`, or `"full"`
 - `limit` (optional): Maximum results to return (default: 100, max: 1000)
 
