@@ -33,7 +33,9 @@
     "test:unit": "vitest run --project unit",
     "test:watch": "vitest",
     "test:integration": "vitest run --project integration",
-    "test:build": "node scripts/smoke-test-build.mjs"
+    "test:build": "node scripts/smoke-test-build.mjs",
+    "sync-version": "node scripts/sync-version.mjs",
+    "version": "pnpm run sync-version && git add plugin/.claude-plugin/plugin.json plugin/.mcp.json server.json"
   },
   "engines": {
     "node": ">=22.5.0"

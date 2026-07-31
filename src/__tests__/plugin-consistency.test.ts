@@ -38,6 +38,13 @@ describe("Claude Code plugin consistency", () => {
     expect(mcp.mcpServers.dbhub.args).toContain(`@bytebase/dbhub@${pkg.version}`);
   });
 
+  it("server.json version matches package.json", () => {
+    const server = readJson("server.json");
+    expect(server.version).toBe(pkg.version);
+    const npmPackage = server.packages.find((p: any) => p.identifier === "@bytebase/dbhub");
+    expect(npmPackage.version).toBe(pkg.version);
+  });
+
   it("plugin dbhub.toml policy matches the MCPB bundle's", () => {
     expect(tomlBody("plugin/dbhub.toml")).toBe(tomlBody("mcpb/dbhub.toml"));
   });
