@@ -33,6 +33,18 @@ DBHub is a minimal MCP server: token-efficient, zero-dependency, and just two to
      MCP Clients           MCP Server             Databases
 ```
 
+> DBHub is the official example in the [Claude Code docs](https://code.claude.com/docs/en/mcp#example-query-your-postgresql-database) for connecting to PostgreSQL via MCP.
+
+## Token Efficiency
+
+DBHub loads just 2 tools by default at **1.4k tokens** — 13-14x fewer than alternatives — keeping the context window open for your actual work.
+
+| MCP Server | Default Config | Default Tools |
+|------------|---------------|--------------|
+| **DBHub** | **1.4k** | 2 (`execute_sql`, `search_objects`) |
+| MCP Toolbox | 19.0k | 28 |
+| Supabase MCP | 19.3k | all |
+
 ## Use Cases
 
 - **Local Development**: Schema exploration, query validation, and data debugging with Claude Code, VS Code, Cursor, etc.
