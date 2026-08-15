@@ -2,6 +2,16 @@
 > Brought to you by [Bytebase](https://www.bytebase.com/), open-source database governance platform.
 
 <p align="center">
+ <a href="https://www.star-history.com/bytebase/dbhub">
+  <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=bytebase/dbhub&type=trending&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=bytebase/dbhub&type=trending" />
+   <img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=bytebase/dbhub&type=trending" />
+  </picture>
+ </a>
+</p>
+
+<p align="center">
 <a href="https://dbhub.ai/" target="_blank">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bytebase/dbhub/main/docs/images/logo/full-dark.svg" width="75%">
